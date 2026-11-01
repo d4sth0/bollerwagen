@@ -177,7 +177,7 @@
     <!-- DYNAMISCHES LIVE-NAVI BANNER -->
     <div id="navBanner" class="nav-banner">
       <span id="navText">🧭 Suche eigenen Standort...</span>
-      <a id="gmapsLink" class="gmaps-link" href="#" target="_blank">↗ Maps</a>
+      <a id="gmapsLink" class="gmaps-link" href="#" target="_blank" style="display:none;">↗ Maps</a>
     </div>
 
     <!-- LIVE ANSICHT -->
@@ -398,6 +398,7 @@
     function toggleLiveNav() {
       const btn = document.getElementById('locateBtn');
       const banner = document.getElementById('navBanner');
+      const gmaps = document.getElementById('gmapsLink');
 
       if (!navActive) {
         if (!navigator.geolocation) {
@@ -408,12 +409,19 @@
         btn.classList.add('nav-active');
         btn.textContent = '🧭 Navi aktiv';
         banner.style.display = 'flex';
-        document.getElementById('navText').textContent = '📡 Ermittle eigenen Standort...';
+        gmaps.style.display = 'none';
+
+        if (!lastLiveData || typeof lastLiveData.lat !== 'number') {
+          document.getElementById('navText').textContent = '⏳ Warte auf Bollerwagen-Standort...';
+        } else {
+          document.getElementById('navText').textContent = '📡 Ermittle eigenen Standort...';
+        }
 
         geoWatchId = navigator.geolocation.watchPosition(
           onUserPosition,
           () => {
-            document.getElementById('navText').textContent = '⚠️ Standortzugriff bitte erlauben';
+            document.getElementById('navText').textContent = '⚠️ Handy-Standort bitte erlauben';
+            gmaps.style.display = 'none';
           },
           { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
         );
@@ -422,6 +430,9 @@
         btn.classList.remove('nav-active');
         btn.textContent = '🧭 Live-Navi';
         banner.style.display = 'none';
+        gmaps.style.display = 'none';
+        gmaps.href = '#';
+
         if (geoWatchId !== null) {
           navigator.geolocation.clearWatch(geoWatchId);
           geoWatchId = null;
@@ -457,13 +468,29 @@
     }
 
     async function updateDynamicRoute(force) {
-      if (!navActive || !userPos || !lastLiveData || currentMode !== 'live') return;
+      const gmaps = document.getElementById('gmapsLink');
+
+      // Sicherheits-Check: Hat der Wagen überhaupt schon Koordinaten?
+      if (!lastLiveData || typeof lastLiveData.lat !== 'number' || typeof lastLiveData.lon !== 'number') {
+        if (navActive) {
+          document.getElementById('navText').textContent = '⏳ Bollerwagen ist aus / noch kein GPS';
+          gmaps.style.display = 'none';
+          gmaps.href = '#';
+        }
+        return;
+      }
+
+      if (!navActive || !userPos || currentMode !== 'live') {
+        gmaps.style.display = 'none';
+        return;
+      }
+
+      // Gültige Koordinaten vorhanden -> Maps-Button aktivieren
+      gmaps.href = `https://www.google.com/maps/dir/?api=1&destination=${lastLiveData.lat},${lastLiveData.lon}&travelmode=walking`;
+      gmaps.style.display = 'inline-block';
 
       const directMeters = haversineKm(userPos.lat, userPos.lon, lastLiveData.lat, lastLiveData.lon) * 1000;
       const compass = getCompassDirection(userPos.lat, userPos.lon, lastLiveData.lat, lastLiveData.lon);
-
-      const gmaps = document.getElementById('gmapsLink');
-      gmaps.href = `https://www.google.com/maps/dir/?api=1&destination=${lastLiveData.lat},${lastLiveData.lon}&travelmode=walking`;
 
       if (directMeters < 15) {
         navLayerGroup.clearLayers();
@@ -519,7 +546,6 @@
         isRoutingBusy = false;
       }
     }
-
     // =====================================================
     // TOUREN-HISTORIE & LIVE-POLLING
     // =====================================================
