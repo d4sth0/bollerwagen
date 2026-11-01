@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Bollerwagen Live-Tracker</title>
+  <title>Bollerwagen Live-Tracker & Touren</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -11,29 +11,54 @@
     #map { width: 100%; height: 100%; z-index: 1; }
 
     .hud-card {
-      position: absolute; top: 12px; left: 12px; right: 12px; max-width: 420px; margin: 0 auto;
-      background: rgba(20, 20, 20, 0.92); backdrop-filter: blur(8px); color: #fff;
-      padding: 12px 16px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.12);
-      box-shadow: 0 6px 20px rgba(0,0,0,0.45); z-index: 1000;
+      position: absolute; top: 10px; left: 10px; right: 10px; max-width: 460px; margin: 0 auto;
+      background: rgba(20, 20, 20, 0.94); backdrop-filter: blur(10px); color: #fff;
+      padding: 12px 14px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.14);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 1000;
     }
-    .hud-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-    .title { font-weight: 800; font-size: 16px; letter-spacing: 0.3px; display: flex; align-items: center; gap: 8px; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; background: #757575; display: inline-block; }
+    .hud-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .title { font-weight: 800; font-size: 15px; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #757575; display: inline-block; flex-shrink: 0; }
     .dot.live { background: #00e676; box-shadow: 0 0 10px #00e676; animation: pulse 1.5s infinite; }
-    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
-    .age { font-size: 12px; color: #bdbdbd; }
+    .dot.history { background: #29b6f6; box-shadow: 0 0 8px #29b6f6; }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.35; } 100% { opacity: 1; } }
 
-    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; background: rgba(255,255,255,0.06); padding: 8px; border-radius: 10px; }
-    .stat-val { font-size: 16px; font-weight: 700; color: #fff; }
-    .stat-lbl { font-size: 11px; color: #9e9e9e; margin-top: 2px; }
+    .mode-select {
+      background: #2b2b2b; color: #fff; border: 1px solid #444; border-radius: 10px;
+      padding: 6px 10px; font-size: 13px; font-weight: 600; outline: none; max-width: 195px;
+    }
+
+    .sub-bar { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #bdbdbd; margin-bottom: 8px; }
+    .toggle-facts-btn {
+      background: rgba(255,255,255,0.1); color: #fff; border: none; border-radius: 8px;
+      padding: 4px 9px; font-size: 11px; font-weight: 600; cursor: pointer; display: none;
+    }
+
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; text-align: center;
+    }
+    .stat-box {
+      background: rgba(255,255,255,0.06); padding: 8px 6px; border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .stat-val { font-size: 14px; font-weight: 700; color: #fff; line-height: 1.2; }
+    .stat-sub { font-size: 11px; color: #81d4fa; font-weight: 600; margin-top: 2px; }
+    .stat-lbl { font-size: 10px; color: #9e9e9e; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+    .legend {
+      display: none; justify-content: center; gap: 14px; font-size: 11px; color: #ccc;
+      margin-top: 9px; padding-top: 7px; border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    .legend span { display: flex; align-items: center; gap: 5px; }
+    .line-sample { width: 16px; height: 4px; border-radius: 2px; display: inline-block; }
 
     .fab-container {
-      position: absolute; bottom: 24px; right: 14px; display: flex; flex-direction: column; gap: 10px; z-index: 1000;
+      position: absolute; bottom: 22px; right: 12px; display: flex; flex-direction: column; gap: 10px; z-index: 1000;
     }
     .fab {
       background: rgba(25, 25, 25, 0.92); color: #fff; border: 1px solid rgba(255,255,255,0.15);
-      padding: 12px 16px; border-radius: 24px; font-size: 14px; font-weight: 600; cursor: pointer;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.4); display: flex; align-items: center; gap: 6px; text-decoration: none;
+      padding: 11px 15px; border-radius: 24px; font-size: 13px; font-weight: 600; cursor: pointer;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.45); display: flex; align-items: center; gap: 6px; text-decoration: none;
     }
     .fab:active { transform: scale(0.96); }
     .fab.active { background: #1976d2; border-color: #42a5f5; }
@@ -43,28 +68,87 @@
       width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
       font-size: 18px; box-shadow: 0 3px 12px rgba(0,0,0,0.6);
     }
+    .pin-marker {
+      background: #212121; color: #fff; border: 2px solid #fff; border-radius: 50%;
+      width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+      font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    }
   </style>
 </head>
 <body>
 
   <div class="hud-card">
-    <div class="hud-header">
-      <div class="title"><span id="statusDot" class="dot"></span><span id="statusText">Verbinde...</span></div>
-      <div id="timeAgo" class="age">---</div>
-    </div>
-    <div class="stats">
-      <div>
-        <div id="valSpeed" class="stat-val">-- km/h</div>
-        <div class="stat-lbl">Geschwindigkeit</div>
+    <div class="hud-top">
+      <div class="title">
+        <span id="statusDot" class="dot"></span>
+        <span id="statusText">Verbinde...</span>
       </div>
-      <div>
+      <select id="daySelect" class="mode-select" onchange="onModeChange()">
+        <option value="live">🟢 Live-Tracking</option>
+      </select>
+    </div>
+
+    <div class="sub-bar">
+      <span id="subInfo">Warte auf Daten...</span>
+      <button id="toggleFactsBtn" class="toggle-facts-btn" onclick="toggleStats()">Statistik ausblenden ▲</button>
+    </div>
+
+    <!-- LIVE ANSICHT -->
+    <div id="liveStats" class="stats-grid">
+      <div class="stat-box">
+        <div id="valSpeed" class="stat-val">-- km/h</div>
+        <div class="stat-lbl">Speed</div>
+      </div>
+      <div class="stat-box">
         <div id="valCruise" class="stat-val">---</div>
         <div class="stat-lbl">Modus</div>
       </div>
-      <div>
-        <div id="valAlt" class="stat-val">-- m</div>
-        <div class="stat-lbl">Höhe</div>
+      <div class="stat-box">
+        <div id="valTrip" class="stat-val">-- km</div>
+        <div class="stat-lbl">Tages-Trip</div>
       </div>
+    </div>
+
+    <!-- HISTORIE / NICE FACTS ANSICHT -->
+    <div id="historyStats" class="stats-grid" style="display:none;">
+      <div class="stat-box">
+        <div id="fDist" class="stat-val">-- km</div>
+        <div id="fPoints" class="stat-sub">-- Punkte</div>
+        <div class="stat-lbl">Strecke</div>
+      </div>
+      <div class="stat-box">
+        <div id="fTimeSpan" class="stat-val">--:--</div>
+        <div id="fTotalDur" class="stat-sub">--</div>
+        <div class="stat-lbl">Zeitraum</div>
+      </div>
+      <div class="stat-box">
+        <div id="fDriveTime" class="stat-val">--</div>
+        <div id="fPauseInfo" class="stat-sub">-- Pause</div>
+        <div class="stat-lbl">Reine Fahrzeit</div>
+      </div>
+      <div class="stat-box">
+        <div id="fAvgSpeed" class="stat-val">Ø -- km/h</div>
+        <div id="fMaxSpeed" class="stat-sub">Max: -- km/h</div>
+        <div class="stat-lbl">Tempi</div>
+      </div>
+      <div class="stat-box">
+        <div id="fCruisePct" class="stat-val">-- %</div>
+        <div id="fCruiseKm" class="stat-sub">-- km Cruise</div>
+        <div class="stat-lbl">Tempomat-Quote</div>
+      </div>
+      <div class="stat-box">
+        <div id="fElevGain" class="stat-val">+-- m</div>
+        <div id="fAltRange" class="stat-sub">-- bis -- m</div>
+        <div class="stat-lbl">Höhenmeter</div>
+      </div>
+    </div>
+
+    <div id="routeLegend" class="legend">
+      <span><i class="line-sample" style="background:#29b6f6;"></i>Tempomat</span>
+      <span><i class="line-sample" style="background:#ffa726;"></i>Manuell</span>
+      <span>🟢 Start</span>
+      <span>🍺 Pause (&gt;5m)</span>
+      <span>🏁 Ziel</span>
     </div>
   </div>
 
@@ -72,12 +156,12 @@
 
   <div class="fab-container">
     <a id="navBtn" class="fab" href="#" target="_blank" style="display:none;">📍 Route öffnen</a>
-    <button id="followBtn" class="fab active" onclick="toggleFollow()">🎯 Zentrieren</button>
+    <button id="followBtn" class="fab active" onclick="centerMap()">🎯 Zentrieren</button>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const DB_URL = "https://bollerwagen-karte-default-rtdb.europe-west1.firebasedatabase.app/status.json";
+    const BASE_URL = "https://bollerwagen-karte-default-rtdb.europe-west1.firebasedatabase.app";
 
     const map = L.map('map', { zoomControl: false }).setView([51.1657, 10.4515], 6);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -92,19 +176,65 @@
       iconAnchor: [18, 18]
     });
 
-    let marker = null;
+    function makePin(emoji, bg) {
+      return L.divIcon({
+        className: '',
+        html: `<div class="pin-marker" style="background:${bg}">${emoji}</div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+      });
+    }
+
+    let liveMarker = null;
+    let historyLayerGroup = L.layerGroup().addTo(map);
+    let currentMode = 'live';
     let autoFollow = true;
-    let lastData = null;
+    let lastLiveData = null;
+    let currentTrackBounds = null;
+    let statsCollapsed = false;
 
     map.on('dragstart', () => {
-      autoFollow = false;
-      document.getElementById('followBtn').classList.remove('active');
+      if (currentMode === 'live') {
+        autoFollow = false;
+        document.getElementById('followBtn').classList.remove('active');
+      }
     });
 
-    function toggleFollow() {
-      autoFollow = true;
-      document.getElementById('followBtn').classList.add('active');
-      if (lastData) map.setView([lastData.lat, lastData.lon], Math.max(map.getZoom(), 17));
+    function centerMap() {
+      if (currentMode === 'live') {
+        autoFollow = true;
+        document.getElementById('followBtn').classList.add('active');
+        if (lastLiveData) map.setView([lastLiveData.lat, lastLiveData.lon], Math.max(map.getZoom(), 17));
+      } else if (currentTrackBounds) {
+        map.fitBounds(currentTrackBounds, { padding: [50, 50] });
+      }
+    }
+
+    function toggleStats() {
+      statsCollapsed = !statsCollapsed;
+      const histGrid = document.getElementById('historyStats');
+      const legend = document.getElementById('routeLegend');
+      const btn = document.getElementById('toggleFactsBtn');
+      histGrid.style.display = statsCollapsed ? 'none' : 'grid';
+      legend.style.display = statsCollapsed ? 'none' : 'flex';
+      btn.textContent = statsCollapsed ? 'Nice Facts einblenden ▼' : 'Statistik ausblenden ▲';
+    }
+
+    function haversineKm(lat1, lon1, lat2, lon2) {
+      const R = 6371.0;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function formatDuration(sec) {
+      sec = Math.max(0, Math.round(sec));
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      if (h > 0) return `${h}h ${m}m`;
+      return `${m} Min.`;
     }
 
     function formatAge(diffSec) {
@@ -116,25 +246,234 @@
       return `vor ${Math.floor(hours / 24)} Tag(en)`;
     }
 
-    function updateHud() {
-      if (!lastData) return;
-      const diffSec = Math.max(0, Math.floor((Date.now() - lastData.ts) / 1000));
+    function formatDateLabel(yyyy_mm_dd) {
+      const parts = yyyy_mm_dd.split('-');
+      if (parts.length !== 3) return yyyy_mm_dd;
+      const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      const days = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+      return `📅 ${days[dateObj.getDay()]}, ${parts[2]}.${parts[1]}.${parts[0]}`;
+    }
+
+    async function loadAvailableDays() {
+      try {
+        const res = await fetch(`${BASE_URL}/tracks.json?shallow=true&t=${Date.now()}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const select = document.getElementById('daySelect');
+        const currentVal = select.value;
+
+        select.innerHTML = '<option value="live">🟢 Live-Tracking</option>';
+        if (data && typeof data === 'object') {
+          const days = Object.keys(data).sort().reverse();
+          for (const d of days) {
+            const opt = document.createElement('option');
+            opt.value = d;
+            opt.textContent = formatDateLabel(d);
+            select.appendChild(opt);
+          }
+        }
+        if ([...select.options].some(o => o.value === currentVal)) {
+          select.value = currentVal;
+        }
+      } catch (e) {}
+    }
+
+    function onModeChange() {
+      const val = document.getElementById('daySelect').value;
+      currentMode = val;
+
+      const liveGrid = document.getElementById('liveStats');
+      const histGrid = document.getElementById('historyStats');
+      const legend = document.getElementById('routeLegend');
+      const toggleBtn = document.getElementById('toggleFactsBtn');
+      const navBtn = document.getElementById('navBtn');
+
+      if (val === 'live') {
+        historyLayerGroup.clearLayers();
+        liveGrid.style.display = 'grid';
+        histGrid.style.display = 'none';
+        legend.style.display = 'none';
+        toggleBtn.style.display = 'none';
+        if (liveMarker) liveMarker.setOpacity(1);
+        if (lastLiveData) navBtn.style.display = 'flex';
+        autoFollow = true;
+        document.getElementById('followBtn').classList.add('active');
+        fetchLiveStatus();
+      } else {
+        if (liveMarker) liveMarker.setOpacity(0.25);
+        navBtn.style.display = 'none';
+        liveGrid.style.display = 'none';
+        statsCollapsed = false;
+        histGrid.style.display = 'grid';
+        legend.style.display = 'flex';
+        toggleBtn.style.display = 'inline-block';
+        toggleBtn.textContent = 'Statistik ausblenden ▲';
+        document.getElementById('followBtn').classList.remove('active');
+        loadDayTrack(val);
+      }
+    }
+
+    async function loadDayTrack(dateKey) {
+      document.getElementById('statusDot').className = 'dot history';
+      document.getElementById('statusText').textContent = 'Lade Tour...';
+      document.getElementById('subInfo').textContent = formatDateLabel(dateKey);
+
+      try {
+        const res = await fetch(`${BASE_URL}/tracks/${dateKey}.json`);
+        const raw = await res.json();
+        historyLayerGroup.clearLayers();
+
+        if (!raw || typeof raw !== 'object') {
+          document.getElementById('statusText').textContent = 'Keine Daten';
+          return;
+        }
+
+        const timestamps = Object.keys(raw).map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
+        if (timestamps.length === 0) return;
+
+        const points = timestamps.map(ts => ({
+          ts,
+          lat: Number(raw[ts].lat),
+          lon: Number(raw[ts].lon),
+          alt: Number(raw[ts].alt || 0),
+          spd: Number(raw[ts].spd || 0),
+          km: Number(raw[ts].km || 0),
+          cr: Number(raw[ts].cr || 0) === 1
+        })).filter(p => !isNaN(p.lat) && !isNaN(p.lon));
+
+        if (points.length === 0) return;
+
+        // Nice Facts berechnen
+        let gpsDistKm = 0;
+        let cruiseDistKm = 0;
+        let driveSec = 0;
+        let pauseSec = 0;
+        let pauseCount = 0;
+        let maxSpeed = 0;
+        let elevGain = 0;
+        let minAlt = points[0].alt;
+        let maxAlt = points[0].alt;
+        let lastSmoothAlt = points[0].alt;
+
+        const allLatLngs = [[points[0].lat, points[0].lon]];
+        if (points[0].spd > maxSpeed) maxSpeed = points[0].spd;
+
+        for (let i = 1; i < points.length; i++) {
+          const p1 = points[i - 1];
+          const p2 = points[i];
+          allLatLngs.push([p2.lat, p2.lon]);
+
+          const dt = p2.ts - p1.ts;
+          const segKm = haversineKm(p1.lat, p1.lon, p2.lat, p2.lon);
+
+          // Sinnvolle Segmente addieren (Schutz vor GPS-Ausreißern)
+          if (segKm < 0.5) {
+            gpsDistKm += segKm;
+            if (p2.cr) cruiseDistKm += segKm;
+          }
+
+          // Fahrzeit vs. Pause (Lücke > 120s gilt als Pause)
+          if (dt <= 60) {
+            driveSec += dt;
+          } else if (dt <= 120) {
+            driveSec += 30;
+            pauseSec += (dt - 30);
+          } else {
+            pauseSec += dt;
+            pauseCount++;
+            if (dt >= 300) {
+              const tStart = new Date(p1.ts * 1000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+              L.marker([p1.lat, p1.lon], { icon: makePin('🍺', '#fb8c00') })
+                .bindPopup(`<b>Pause (${formatDuration(dt)})</b><br>ab ${tStart} Uhr`)
+                .addTo(historyLayerGroup);
+            }
+          }
+
+          if (p2.spd > maxSpeed) maxSpeed = p2.spd;
+          if (p2.alt < minAlt) minAlt = p2.alt;
+          if (p2.alt > maxAlt) maxAlt = p2.alt;
+
+          // Höhenmeter-Hysterese (3m Schwelle gegen GPS-Rauschen)
+          if (p2.alt - lastSmoothAlt >= 3.0) {
+            elevGain += (p2.alt - lastSmoothAlt);
+            lastSmoothAlt = p2.alt;
+          } else if (lastSmoothAlt - p2.alt >= 3.0) {
+            lastSmoothAlt = p2.alt;
+          }
+
+          // Farbige Linie je nach Modus (Tempomat = Blau, Manuell = Orange)
+          const segColor = p2.cr ? '#29b6f6' : '#ffa726';
+          const tStr = new Date(p2.ts * 1000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+          L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {
+            color: segColor, weight: 5, opacity: 0.9
+          }).bindPopup(`<b>🕒 ${tStr} Uhr</b><br>Speed: ${p2.spd.toFixed(1)} km/h<br>Modus: ${p2.cr ? 'Tempomat' : 'Manuell'}<br>Höhe: ${Math.round(p2.alt)} m`)
+            .addTo(historyLayerGroup);
+        }
+
+        // Start- & Ziel-Marker
+        const first = points[0];
+        const last = points[points.length - 1];
+        const startStr = new Date(first.ts * 1000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+        const endStr = new Date(last.ts * 1000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+
+        L.marker([first.lat, first.lon], { icon: makePin('🟢', '#2e7d32') })
+          .bindPopup(`<b>Tour-Start</b><br>${startStr} Uhr`)
+          .addTo(historyLayerGroup);
+
+        if (points.length > 1) {
+          L.marker([last.lat, last.lon], { icon: makePin('🏁', '#c62828') })
+            .bindPopup(`<b>Tour-Ende</b><br>${endStr} Uhr`)
+            .addTo(historyLayerGroup);
+        }
+
+        currentTrackBounds = L.latLngBounds(allLatLngs);
+        map.fitBounds(currentTrackBounds, { padding: [50, 50] });
+
+        // Rad-Sensor-Distanz heranziehen, falls plausibel größer als reine Luftlinien-Summe
+        const odoDelta = (last.km >= first.km) ? (last.km - first.km) : 0;
+        const bestDistKm = Math.max(gpsDistKm, odoDelta);
+        const totalDurSec = Math.max(0, last.ts - first.ts);
+        const avgMovingKmh = driveSec > 60 ? (bestDistKm / (driveSec / 3600)) : 0;
+        const cruisePct = gpsDistKm > 0.01 ? Math.round((cruiseDistKm / gpsDistKm) * 100) : 0;
+
+        document.getElementById('statusText').textContent = 'Tour-Rückblick';
+        document.getElementById('fDist').textContent = `${bestDistKm.toFixed(2)} km`;
+        document.getElementById('fPoints').textContent = `${points.length} Messpunkte`;
+        document.getElementById('fTimeSpan').textContent = `${startStr} – ${endStr}`;
+        document.getElementById('fTotalDur').textContent = `Gesamt: ${formatDuration(totalDurSec)}`;
+        document.getElementById('fDriveTime').textContent = formatDuration(driveSec);
+        document.getElementById('fPauseInfo').textContent = `${pauseCount} Stopps (${formatDuration(pauseSec)})`;
+        document.getElementById('fAvgSpeed').textContent = `Ø ${avgMovingKmh.toFixed(1)} km/h`;
+        document.getElementById('fMaxSpeed').textContent = `Top: ${maxSpeed.toFixed(1)} km/h`;
+        document.getElementById('fCruisePct').textContent = `${cruisePct} %`;
+        document.getElementById('fCruiseKm').textContent = `${(bestDistKm * cruisePct / 100).toFixed(2)} km Cruise`;
+        document.getElementById('fElevGain').textContent = `+${Math.round(elevGain)} m`;
+        document.getElementById('fAltRange').textContent = `${Math.round(minAlt)}m – ${Math.round(maxAlt)}m`;
+      } catch (e) {
+        document.getElementById('statusText').textContent = 'Fehler beim Laden';
+      }
+    }
+
+    function updateLiveHud() {
+      if (currentMode !== 'live' || !lastLiveData) return;
+      const diffSec = Math.max(0, Math.floor((Date.now() - lastLiveData.ts) / 1000));
       const isLive = diffSec <= 35;
 
       const dot = document.getElementById('statusDot');
       const txt = document.getElementById('statusText');
       dot.className = isLive ? 'dot live' : 'dot';
       txt.textContent = isLive ? 'Bollerwagen LIVE' : 'Zuletzt gesehen (Aus)';
-      document.getElementById('timeAgo').textContent = formatAge(diffSec);
+      document.getElementById('subInfo').textContent = `Letztes Signal: ${formatAge(diffSec)} • Höhe: ${Math.round(lastLiveData.alt || 0)} m`;
 
-      document.getElementById('valSpeed').textContent = isLive ? `${lastData.speed.toFixed(1)} km/h` : '0.0 km/h';
-      document.getElementById('valCruise').textContent = isLive ? (lastData.cruise ? 'Tempomat' : 'Manuell') : 'Aus';
-      document.getElementById('valAlt').textContent = `${Math.round(lastData.alt)} m`;
+      document.getElementById('valSpeed').textContent = isLive ? `${Number(lastLiveData.speed || 0).toFixed(1)} km/h` : '0.0 km/h';
+      document.getElementById('valCruise').textContent = isLive ? (lastLiveData.cruise ? 'Tempomat' : 'Manuell') : 'Aus';
+      document.getElementById('valTrip').textContent = `${Number(lastLiveData.trip || 0).toFixed(2)} km`;
     }
 
-    async function fetchLocation() {
+    async function fetchLiveStatus() {
+      if (currentMode !== 'live') return;
       try {
-        const res = await fetch(DB_URL + "?t=" + Date.now());
+        const res = await fetch(`${BASE_URL}/status.json?t=${Date.now()}`);
         if (!res.ok) return;
         const data = await res.json();
         if (!data || typeof data.lat !== 'number' || typeof data.lon !== 'number') {
@@ -142,14 +481,14 @@
           return;
         }
 
-        lastData = data;
+        lastLiveData = data;
         const pos = [data.lat, data.lon];
 
-        if (!marker) {
-          marker = L.marker(pos, { icon: wagonIcon }).addTo(map);
+        if (!liveMarker) {
+          liveMarker = L.marker(pos, { icon: wagonIcon }).addTo(map);
           map.setView(pos, 17);
         } else {
-          marker.setLatLng(pos);
+          liveMarker.setLatLng(pos);
           if (autoFollow) map.panTo(pos);
         }
 
@@ -157,13 +496,15 @@
         navBtn.style.display = 'flex';
         navBtn.href = `https://www.google.com/maps/dir/?api=1&destination=${data.lat},${data.lon}&travelmode=walking`;
 
-        updateHud();
+        updateLiveHud();
       } catch (e) {}
     }
 
-    fetchLocation();
-    setInterval(fetchLocation, 5000);
-    setInterval(updateHud, 1000);
+    loadAvailableDays();
+    fetchLiveStatus();
+    setInterval(fetchLiveStatus, 5000);
+    setInterval(updateLiveHud, 1000);
+    setInterval(loadAvailableDays, 60000);
   </script>
 </body>
 </html>
