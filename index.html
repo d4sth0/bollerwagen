@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Bollerwagen Live-Tracker & Touren</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
     body, html { margin: 0; padding: 0; width: 100%; height: 100dvh; overflow: hidden; background: #121212; }
@@ -34,12 +35,15 @@
     }
     .mode-select:hover { border-color: #666; }
 
-    .sub-bar { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #bdbdbd; margin-bottom: 6px; }
-    .toggle-facts-btn {
-      background: rgba(255,255,255,0.12); color: #fff; border: none; border-radius: 6px;
-      padding: 3px 8px; font-size: 10px; font-weight: 600; cursor: pointer; display: none; white-space: nowrap;
+    .sub-bar { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 11px; color: #bdbdbd; margin-bottom: 6px; }
+    .sub-actions { display: flex; gap: 5px; align-items: center; flex-shrink: 0; }
+    .mini-btn {
+      background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;
+      padding: 3px 8px; font-size: 10px; font-weight: 600; cursor: pointer; white-space: nowrap;
     }
-    .toggle-facts-btn:hover { background: rgba(255,255,255,0.2); }
+    .mini-btn:hover { background: rgba(255,255,255,0.22); }
+    .mini-btn.dev-btn { background: rgba(0, 229, 255, 0.15); border-color: rgba(0, 229, 255, 0.35); color: #84ffff; }
+    .mini-btn.dev-btn.active { background: #00838f; color: #fff; border-color: #00e5ff; }
 
     .nav-banner {
       display: none; justify-content: space-between; align-items: center; gap: 8px;
@@ -70,9 +74,26 @@
     .legend span { display: flex; align-items: center; gap: 4px; }
     .line-sample { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
 
+    /* =========================================================
+       KARTEN-BUTTONS & LAYER-UMSCHALTER
+       ========================================================= */
     .fab-container {
       position: absolute; bottom: 18px; right: 10px; display: flex; flex-direction: column; gap: 8px; z-index: 1000;
+      transition: bottom 0.25s ease;
     }
+    .layer-container {
+      position: absolute; bottom: 18px; left: 10px; z-index: 1000;
+      display: flex; background: rgba(20, 20, 20, 0.92); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.18); border-radius: 22px; padding: 3px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.45); transition: bottom 0.25s ease;
+    }
+    .layer-btn {
+      background: transparent; color: #bdbdbd; border: none; padding: 7px 11px;
+      border-radius: 18px; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.15s;
+    }
+    .layer-btn.active { background: #1976d2; color: #fff; }
+    .layer-btn:hover:not(.active) { color: #fff; }
+
     .fab {
       background: rgba(25, 25, 25, 0.92); color: #fff; border: 1px solid rgba(255,255,255,0.18);
       padding: 10px 14px; border-radius: 22px; font-size: 12px; font-weight: 700; cursor: pointer;
@@ -84,11 +105,52 @@
     .fab.active { background: #1976d2; border-color: #64b5f6; }
     .fab.nav-active { background: #00897b; border-color: #4db6ac; }
 
-    /* Auf Smartphones keine +/- Zoom-Buttons nötig (Pinch-to-Zoom) */
+    /* =========================================================
+       ENTWICKLER-UNTERMENÜ (TELEMETRIE-DIAGRAMME)
+       ========================================================= */
+    .dev-drawer {
+      position: absolute; left: 0; right: 0; bottom: 0; height: 46dvh; min-height: 270px; max-height: 440px;
+      background: rgba(15, 15, 18, 0.96); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border-top: 1px solid rgba(255,255,255,0.18); border-radius: 18px 18px 0 0;
+      box-shadow: 0 -8px 30px rgba(0,0,0,0.65); z-index: 1050;
+      display: flex; flex-direction: column; padding: 10px 12px 12px 12px;
+      transform: translateY(105%); transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+      color: #fff;
+    }
+    .dev-drawer.open { transform: translateY(0); }
+
+    .dev-header {
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
+      padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 8px; flex-wrap: wrap;
+    }
+    .dev-title { font-size: 13px; font-weight: 800; color: #84ffff; display: flex; align-items: center; gap: 6px; }
+    .dev-controls { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+    .chip-btn {
+      background: rgba(255,255,255,0.08); color: #bbb; border: 1px solid rgba(255,255,255,0.12);
+      padding: 4px 8px; border-radius: 7px; font-size: 10px; font-weight: 700; cursor: pointer;
+    }
+    .chip-btn.on-dac { background: rgba(0, 230, 118, 0.18); color: #00e676; border-color: #00e676; }
+    .chip-btn.on-tilt { background: rgba(255, 82, 82, 0.18); color: #ff5252; border-color: #ff5252; }
+    .chip-btn.on-spd { background: rgba(41, 182, 246, 0.18); color: #29b6f6; border-color: #29b6f6; }
+    .chip-btn.on-alt { background: rgba(171, 71, 188, 0.22); color: #ce93d8; border-color: #ab47bc; }
+    .close-dev-btn {
+      background: rgba(255,255,255,0.12); color: #fff; border: none; border-radius: 7px;
+      padding: 4px 9px; font-size: 11px; font-weight: 700; cursor: pointer;
+    }
+
+    .dev-kpis {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; text-align: center;
+    }
+    .dev-kpi-box { background: rgba(255,255,255,0.05); padding: 4px 4px; border-radius: 7px; font-size: 10px; }
+    .dev-kpi-val { font-weight: 700; font-size: 12px; color: #fff; }
+    .dev-kpi-lbl { font-size: 9px; color: #9e9e9e; }
+
+    .chart-wrap { flex: 1; position: relative; width: 100%; min-height: 140px; }
+
     .leaflet-control-zoom { display: none; }
 
     /* =========================================================
-       SEHR SCHMALE HANDYS (z.B. iPhone SE / kleine Screens < 360px)
+       SEHR SCHMALE HANDYS (< 360px)
        ========================================================= */
     @media (max-width: 360px) {
       .hud-card { padding: 8px 10px; }
@@ -103,7 +165,7 @@
     @media (min-width: 768px) {
       .hud-card {
         top: 20px; left: 20px; right: auto; margin: 0;
-        width: 390px; padding: 16px 18px; border-radius: 18px;
+        width: 400px; padding: 16px 18px; border-radius: 18px;
         box-shadow: 0 10px 32px rgba(0,0,0,0.55);
       }
       .hud-top { margin-bottom: 10px; }
@@ -111,7 +173,7 @@
       .dot { width: 11px; height: 11px; }
       .mode-select { max-width: 200px; font-size: 13px; padding: 6px 10px; border-radius: 10px; }
       .sub-bar { font-size: 12px; margin-bottom: 10px; }
-      .toggle-facts-btn { font-size: 11px; padding: 4px 10px; border-radius: 7px; }
+      .mini-btn { font-size: 11px; padding: 4px 10px; border-radius: 7px; }
       .nav-banner { font-size: 13px; padding: 8px 12px; margin-bottom: 10px; }
       .gmaps-link { font-size: 12px; padding: 4px 10px; }
 
@@ -126,17 +188,23 @@
       .fab-container { bottom: 28px; right: 24px; gap: 10px; }
       .fab { padding: 12px 18px; font-size: 14px; border-radius: 26px; }
 
-      /* Auf großen Bildschirmen +/- Zoom-Steuerung für die Maus einblenden */
+      .layer-container { bottom: 28px; left: 70px; padding: 4px; }
+      .layer-btn { font-size: 12px; padding: 8px 14px; }
+
+      .dev-drawer {
+        left: 440px; right: 24px; bottom: 20px; height: 360px;
+        border-radius: 18px; border: 1px solid rgba(255,255,255,0.18);
+        padding: 14px 18px;
+      }
+
       .leaflet-control-zoom { display: block; border: none !important; box-shadow: 0 4px 14px rgba(0,0,0,0.4) !important; }
       .leaflet-control-zoom a { background: rgba(25,25,25,0.92) !important; color: #fff !important; border-color: rgba(255,255,255,0.15) !important; }
       .leaflet-control-zoom a:hover { background: #333 !important; }
     }
 
-    /* =========================================================
-       GROSSE DESKTOP-MONITORE (ab 1200px)
-       ========================================================= */
     @media (min-width: 1200px) {
       .hud-card { width: 420px; padding: 18px 20px; }
+      .dev-drawer { left: 460px; }
       .stat-val { font-size: 16px; }
     }
 
@@ -149,6 +217,11 @@
       background: #2979ff; border: 2.5px solid #fff; border-radius: 50%;
       width: 16px; height: 16px; box-shadow: 0 0 10px rgba(41, 121, 255, 0.9);
     }
+    .hover-marker {
+      background: #ffd600; color: #000; border: 2.5px solid #fff; border-radius: 50%;
+      width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: bold; box-shadow: 0 0 14px rgba(255, 214, 0, 0.95);
+    }
     .pin-marker {
       background: #212121; color: #fff; border: 2px solid #fff; border-radius: 50%;
       width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
@@ -158,6 +231,7 @@
 </head>
 <body>
 
+  <!-- HAUPT-HUD (OBERFLÄCHE FÜR ALLE NUTZER) -->
   <div class="hud-card">
     <div class="hud-top">
       <div class="title">
@@ -170,8 +244,11 @@
     </div>
 
     <div class="sub-bar">
-      <span id="subInfo">Warte auf GPS-Daten...</span>
-      <button id="toggleFactsBtn" class="toggle-facts-btn" onclick="toggleStats()">Ausblenden ▲</button>
+      <span id="subInfo" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Warte auf GPS-Daten...</span>
+      <div class="sub-actions">
+        <button id="devMenuBtn" class="mini-btn dev-btn" onclick="toggleDevDrawer()">📈 Telemetrie</button>
+        <button id="toggleFactsBtn" class="mini-btn" onclick="toggleStats()" style="display:none;">Ausblenden ▲</button>
+      </div>
     </div>
 
     <!-- DYNAMISCHES LIVE-NAVI BANNER -->
@@ -239,24 +316,95 @@
     </div>
   </div>
 
+  <!-- KARTE -->
   <div id="map"></div>
 
-  <div class="fab-container">
+  <!-- KARTEN-LAYER UMSCHALTER (UNTEN LINKS) -->
+  <div id="layerBar" class="layer-container">
+    <button id="btnLayerOsm" class="layer-btn active" onclick="setMapLayer('osm')">Straße</button>
+    <button id="btnLayerTopo" class="layer-btn" onclick="setMapLayer('topo')">Topo</button>
+    <button id="btnLayerSat" class="layer-btn" onclick="setMapLayer('sat')">Satellit</button>
+  </div>
+
+  <!-- AKTIONS-BUTTONS (UNTEN RECHTS) -->
+  <div id="fabBar" class="fab-container">
     <button id="locateBtn" class="fab" onclick="toggleLiveNav()">🧭 Live-Navi</button>
     <button id="followBtn" class="fab active" onclick="centerMap()">🎯 Zentrieren</button>
+  </div>
+
+  <!-- ENTWICKLER-UNTERMENÜ: DAC-SPANNUNG VS. STEIGUNG -->
+  <div id="devDrawer" class="dev-drawer">
+    <div class="dev-header">
+      <div class="dev-title">⚡ Entwickler-Telemetrie (DAC vs. Steigung)</div>
+      <div class="dev-controls">
+        <button id="btnSeriesDac" class="chip-btn on-dac" onclick="toggleSeries(0)">DAC (V)</button>
+        <button id="btnSeriesTilt" class="chip-btn on-tilt" onclick="toggleSeries(1)">Steigung (°)</button>
+        <button id="btnSeriesSpd" class="chip-btn" onclick="toggleSeries(2)">Speed (km/h)</button>
+        <button id="btnSeriesAlt" class="chip-btn" onclick="toggleSeries(3)">Höhe (m)</button>
+        <button class="close-dev-btn" onclick="toggleDevDrawer()">✕ Schließen</button>
+      </div>
+    </div>
+
+    <div class="dev-kpis">
+      <div class="dev-kpi-box">
+        <div id="kpiAvgDac" class="dev-kpi-val">-- V</div>
+        <div class="dev-kpi-lbl">Ø DAC (Cruise)</div>
+      </div>
+      <div class="dev-kpi-box">
+        <div id="kpiMaxDac" class="dev-kpi-val">-- V</div>
+        <div class="dev-kpi-lbl">Max DAC</div>
+      </div>
+      <div class="dev-kpi-box">
+        <div id="kpiMaxUp" class="dev-kpi-val">-- °</div>
+        <div class="dev-kpi-lbl">Max Steigung</div>
+      </div>
+      <div class="dev-kpi-box">
+        <div id="kpiCursor" class="dev-kpi-val" style="color:#ffd600;">Tippen/Hover</div>
+        <div class="dev-kpi-lbl">Messpunkt</div>
+      </div>
+    </div>
+
+    <div class="chart-wrap">
+      <canvas id="telemetryChart"></canvas>
+    </div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     const BASE_URL = "https://bollerwagen-karte-default-rtdb.europe-west1.firebasedatabase.app";
 
-    const map = L.map('map', { zoomControl: false }).setView([51.1657, 10.4515], 6);
-    L.control.zoom({ position: 'bottomleft' }).addTo(map);
+    // =====================================================
+    // KARTEN-LAYER INITIALISIERUNG
+    // =====================================================
+    const tileLayers = {
+      osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap'
+      }),
+      topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        maxZoom: 17,
+        attribution: '© OpenTopoMap (CC-BY-SA)'
+      }),
+      sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: '© Esri Satellite'
+      })
+    };
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
-    }).addTo(map);
+    const map = L.map('map', { zoomControl: false, layers: [tileLayers.osm] }).setView([51.1657, 10.4515], 6);
+    L.control.zoom({ position: 'bottomleft' }).addTo(map);
+    let activeLayerKey = 'osm';
+
+    function setMapLayer(key) {
+      if (key === activeLayerKey || !tileLayers[key]) return;
+      map.removeLayer(tileLayers[activeLayerKey]);
+      tileLayers[key].addTo(map);
+      activeLayerKey = key;
+
+      document.getElementById('btnLayerOsm').classList.toggle('active', key === 'osm');
+      document.getElementById('btnLayerTopo').classList.toggle('active', key === 'topo');
+      document.getElementById('btnLayerSat').classList.toggle('active', key === 'sat');
+    }
 
     const wagonIcon = L.divIcon({
       className: '',
@@ -272,6 +420,13 @@
       iconAnchor: [8, 8]
     });
 
+    const hoverIcon = L.divIcon({
+      className: '',
+      html: '<div class="hover-marker">⚡</div>',
+      iconSize: [26, 26],
+      iconAnchor: [13, 13]
+    });
+
     function makePin(emoji, bg) {
       return L.divIcon({
         className: '',
@@ -282,6 +437,7 @@
     }
 
     let liveMarker = null;
+    let chartHoverMarker = null;
     let historyLayerGroup = L.layerGroup().addTo(map);
     let navLayerGroup = L.layerGroup().addTo(map);
 
@@ -290,6 +446,11 @@
     let lastLiveData = null;
     let currentTrackBounds = null;
     let statsCollapsed = false;
+
+    // Telemetrie-Daten & Chart
+    let devDrawerOpen = false;
+    let telemetryChart = null;
+    let chartPoints = [];
 
     // Eigener Standort & Live-Navigation
     let navActive = false;
@@ -309,9 +470,10 @@
     });
 
     function getFitPadding() {
+      const bottomPad = devDrawerOpen && window.innerWidth < 768 ? 310 : 70;
       return window.innerWidth >= 768
-        ? { paddingTopLeft: [430, 50], paddingBottomRight: [50, 50], maxZoom: 18 }
-        : { paddingTopLeft: [30, 190], paddingBottomRight: [30, 70], maxZoom: 18 };
+        ? { paddingTopLeft: [440, 50], paddingBottomRight: [50, devDrawerOpen ? 390 : 50], maxZoom: 18 }
+        : { paddingTopLeft: [30, 190], paddingBottomRight: [30, bottomPad], maxZoom: 18 };
     }
 
     function centerMap() {
@@ -343,6 +505,241 @@
       btn.textContent = statsCollapsed ? 'Infos ▼' : 'Ausblenden ▲';
     }
 
+    // =====================================================
+    // ENTWICKLER-TELEMETRIE DIAGRAMM (CHART.JS)
+    // =====================================================
+    function initTelemetryChart() {
+      const ctx = document.getElementById('telemetryChart').getContext('2d');
+      telemetryChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'DAC-Spannung (V)',
+              data: [],
+              borderColor: '#00e676',
+              backgroundColor: 'rgba(0, 230, 118, 0.12)',
+              borderWidth: 2,
+              pointRadius: 0,
+              pointHitRadius: 12,
+              tension: 0.25,
+              fill: true,
+              yAxisID: 'yDac'
+            },
+            {
+              label: 'Steigung (°)',
+              data: [],
+              borderColor: '#ff5252',
+              backgroundColor: 'rgba(255, 82, 82, 0.08)',
+              borderWidth: 2,
+              pointRadius: 0,
+              pointHitRadius: 12,
+              tension: 0.25,
+              fill: false,
+              yAxisID: 'yTilt'
+            },
+            {
+              label: 'Speed (km/h)',
+              data: [],
+              borderColor: '#29b6f6',
+              borderWidth: 1.5,
+              borderDash: [4, 4],
+              pointRadius: 0,
+              tension: 0.25,
+              hidden: true,
+              yAxisID: 'yTilt'
+            },
+            {
+              label: 'Höhe (m)',
+              data: [],
+              borderColor: '#ab47bc',
+              borderWidth: 1.5,
+              pointRadius: 0,
+              tension: 0.25,
+              hidden: true,
+              yAxisID: 'yAlt'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: 'rgba(15, 15, 18, 0.94)',
+              titleColor: '#84ffff',
+              bodyFont: { size: 11 },
+              callbacks: {
+                afterBody: (items) => {
+                  const idx = items[0].dataIndex;
+                  const pt = chartPoints[idx];
+                  if (!pt) return '';
+                  if (!chartHoverMarker) {
+                    chartHoverMarker = L.marker([pt.lat, pt.lon], { icon: hoverIcon, zIndexOffset: 2000 }).addTo(map);
+                  } else {
+                    chartHoverMarker.setLatLng([pt.lat, pt.lon]);
+                  }
+                  document.getElementById('kpiCursor').textContent = `${pt.dac.toFixed(2)}V | ${pt.tlt.toFixed(1)}°`;
+                  return `Modus: ${pt.cr ? 'Tempomat' : 'Manuell'}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#9e9e9e', font: { size: 10 }, maxTicksLimit: 7 },
+              grid: { color: 'rgba(255,255,255,0.05)' }
+            },
+            yDac: {
+              type: 'linear',
+              position: 'left',
+              min: 0,
+              max: 3.3,
+              title: { display: true, text: 'DAC (V)', color: '#00e676', font: { size: 10, weight: 'bold' } },
+              ticks: { color: '#00e676', font: { size: 10 } },
+              grid: { color: 'rgba(255,255,255,0.07)' }
+            },
+            yTilt: {
+              type: 'linear',
+              position: 'right',
+              suggestedMin: -10,
+              suggestedMax: 15,
+              title: { display: true, text: 'Steigung (°) / Speed', color: '#ff5252', font: { size: 10, weight: 'bold' } },
+              ticks: { color: '#ff5252', font: { size: 10 } },
+              grid: { drawOnChartArea: false }
+            },
+            yAlt: {
+              type: 'linear',
+              position: 'right',
+              display: false,
+              grid: { drawOnChartArea: false }
+            }
+          }
+        }
+      });
+    }
+
+    function toggleSeries(idx) {
+      if (!telemetryChart) return;
+      const meta = telemetryChart.getDatasetMeta(idx);
+      meta.hidden = meta.hidden === null ? !telemetryChart.data.datasets[idx].hidden : null;
+
+      const btnIds = ['btnSeriesDac', 'btnSeriesTilt', 'btnSeriesSpd', 'btnSeriesAlt'];
+      const clsNames = ['on-dac', 'on-tilt', 'on-spd', 'on-alt'];
+      const isVisible = !telemetryChart.isDatasetVisible(idx);
+      telemetryChart.setDatasetVisibility(idx, isVisible);
+      document.getElementById(btnIds[idx]).classList.toggle(clsNames[idx], isVisible);
+
+      if (idx === 3) {
+        telemetryChart.options.scales.yAlt.display = isVisible;
+      }
+      telemetryChart.update();
+    }
+
+    async function toggleDevDrawer() {
+      devDrawerOpen = !devDrawerOpen;
+      document.getElementById('devDrawer').classList.toggle('open', devDrawerOpen);
+      document.getElementById('devMenuBtn').classList.toggle('active', devDrawerOpen);
+
+      if (window.innerWidth < 768) {
+        const bottomOffset = devDrawerOpen ? 'calc(46dvh + 10px)' : '18px';
+        document.getElementById('fabBar').style.bottom = bottomOffset;
+        document.getElementById('layerBar').style.bottom = bottomOffset;
+      }
+
+      if (!devDrawerOpen && chartHoverMarker) {
+        map.removeLayer(chartHoverMarker);
+        chartHoverMarker = null;
+      }
+
+      if (devDrawerOpen) {
+        if (!telemetryChart) initTelemetryChart();
+        if (currentMode === 'live' && chartPoints.length === 0) {
+          await loadTodayTrackForLiveChart();
+        } else {
+          updateChartUI();
+        }
+      }
+    }
+
+    async function loadTodayTrackForLiveChart() {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const todayKey = `${yyyy}-${mm}-${dd}`;
+
+      try {
+        const res = await fetch(`${BASE_URL}/tracks/${todayKey}.json?t=${Date.now()}`);
+        const raw = await res.json();
+        if (raw && typeof raw === 'object') {
+          const timestamps = Object.keys(raw).map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
+          chartPoints = timestamps.map(ts => ({
+            ts,
+            lat: Number(raw[ts].lat),
+            lon: Number(raw[ts].lon),
+            alt: Number(raw[ts].alt || 0),
+            spd: Number(raw[ts].spd || 0),
+            tlt: Number(raw[ts].tlt || 0),
+            dac: Number(raw[ts].dac || 0),
+            cr: Number(raw[ts].cr || 0) === 1
+          })).filter(p => !isNaN(p.lat) && !isNaN(p.lon));
+        }
+      } catch (e) {}
+      updateChartUI();
+    }
+
+    function updateChartUI() {
+      if (!telemetryChart) return;
+
+      const labels = [];
+      const dacData = [];
+      const tiltData = [];
+      const spdData = [];
+      const altData = [];
+
+      let sumCruiseDac = 0;
+      let cruiseCnt = 0;
+      let maxDac = 0;
+      let maxUp = -99;
+
+      for (const p of chartPoints) {
+        const d = new Date(p.ts * 1000);
+        labels.push(d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        dacData.push(p.dac);
+        tiltData.push(p.tlt);
+        spdData.push(p.spd);
+        altData.push(p.alt);
+
+        if (p.cr && p.dac > 0.1) {
+          sumCruiseDac += p.dac;
+          cruiseCnt++;
+        }
+        if (p.dac > maxDac) maxDac = p.dac;
+        if (p.tlt > maxUp) maxUp = p.tlt;
+      }
+
+      telemetryChart.data.labels = labels;
+      telemetryChart.data.datasets[0].data = dacData;
+      telemetryChart.data.datasets[1].data = tiltData;
+      telemetryChart.data.datasets[2].data = spdData;
+      telemetryChart.data.datasets[3].data = altData;
+      telemetryChart.update('none');
+
+      document.getElementById('kpiAvgDac').textContent = cruiseCnt > 0 ? `${(sumCruiseDac / cruiseCnt).toFixed(2)} V` : '-- V';
+      document.getElementById('kpiMaxDac').textContent = chartPoints.length > 0 ? `${maxDac.toFixed(2)} V` : '-- V';
+      document.getElementById('kpiMaxUp').textContent = chartPoints.length > 0 && maxUp > -90 ? `${maxUp.toFixed(1)} °` : '-- °';
+      if (chartPoints.length === 0) {
+        document.getElementById('kpiCursor').textContent = 'Keine Daten';
+      }
+    }
+
+    // =====================================================
+    // HILFSFUNKTIONEN (MATHEMATIK & FORMATIERUNG)
+    // =====================================================
     function haversineKm(lat1, lon1, lat2, lon2) {
       const R = 6371.0;
       const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -470,7 +867,6 @@
     async function updateDynamicRoute(force) {
       const gmaps = document.getElementById('gmapsLink');
 
-      // Sicherheits-Check: Hat der Wagen überhaupt schon Koordinaten?
       if (!lastLiveData || typeof lastLiveData.lat !== 'number' || typeof lastLiveData.lon !== 'number') {
         if (navActive) {
           document.getElementById('navText').textContent = '⏳ Bollerwagen ist aus / noch kein GPS';
@@ -485,7 +881,6 @@
         return;
       }
 
-      // Gültige Koordinaten vorhanden -> Maps-Button aktivieren
       gmaps.href = `https://www.google.com/maps/dir/?api=1&destination=${lastLiveData.lat},${lastLiveData.lon}&travelmode=walking`;
       gmaps.style.display = 'inline-block';
 
@@ -546,6 +941,7 @@
         isRoutingBusy = false;
       }
     }
+
     // =====================================================
     // TOUREN-HISTORIE & LIVE-POLLING
     // =====================================================
@@ -584,6 +980,11 @@
       const locateBtn = document.getElementById('locateBtn');
       const navBanner = document.getElementById('navBanner');
 
+      if (chartHoverMarker) {
+        map.removeLayer(chartHoverMarker);
+        chartHoverMarker = null;
+      }
+
       statsCollapsed = false;
       toggleBtn.style.display = 'inline-block';
       toggleBtn.textContent = 'Ausblenden ▲';
@@ -598,6 +999,8 @@
         if (liveMarker) liveMarker.setOpacity(1);
         autoFollow = true;
         document.getElementById('followBtn').classList.add('active');
+        chartPoints = [];
+        if (devDrawerOpen) loadTodayTrackForLiveChart();
         fetchLiveStatus();
       } else {
         if (liveMarker) liveMarker.setOpacity(0.2);
@@ -624,6 +1027,8 @@
 
         if (!raw || typeof raw !== 'object') {
           document.getElementById('subInfo').textContent = 'Keine Routendaten an diesem Tag';
+          chartPoints = [];
+          updateChartUI();
           return;
         }
 
@@ -637,10 +1042,15 @@
           alt: Number(raw[ts].alt || 0),
           spd: Number(raw[ts].spd || 0),
           km: Number(raw[ts].km || 0),
+          tlt: Number(raw[ts].tlt || 0),
+          dac: Number(raw[ts].dac || 0),
           cr: Number(raw[ts].cr || 0) === 1
         })).filter(p => !isNaN(p.lat) && !isNaN(p.lon));
 
         if (points.length === 0) return;
+
+        chartPoints = points;
+        if (devDrawerOpen) updateChartUI();
 
         let gpsDistKm = 0;
         let cruiseDistKm = 0;
@@ -700,7 +1110,7 @@
           const tStr = new Date(p2.ts * 1000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
           L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {
             color: segColor, weight: 5, opacity: 0.9
-          }).bindPopup(`<b>🕒 ${tStr} Uhr</b><br>Speed: ${p2.spd.toFixed(1)} km/h<br>Modus: ${p2.cr ? 'Tempomat' : 'Manuell'}<br>Höhe: ${Math.round(p2.alt)} m`)
+          }).bindPopup(`<b>🕒 ${tStr} Uhr</b><br>Speed: ${p2.spd.toFixed(1)} km/h<br>DAC: ${p2.dac.toFixed(2)} V | Steigung: ${p2.tlt.toFixed(1)}°<br>Modus: ${p2.cr ? 'Tempomat' : 'Manuell'}<br>Höhe: ${Math.round(p2.alt)} m`)
             .addTo(historyLayerGroup);
         }
 
@@ -728,7 +1138,7 @@
         const avgMovingKmh = driveSec > 60 ? (bestDistKm / (driveSec / 3600)) : 0;
         const cruisePct = gpsDistKm > 0.01 ? Math.round((cruiseDistKm / gpsDistKm) * 100) : 0;
 
-        document.getElementById('subInfo').textContent = `${formatDateLabel(dateKey)} • ${points.length} GPS-Punkte`;
+        document.getElementById('subInfo').textContent = `${formatDateLabel(dateKey)} • ${points.length} Punkte`;
         document.getElementById('fDist').textContent = `${bestDistKm.toFixed(2)} km`;
         document.getElementById('fPoints').textContent = `${points.length} Punkte`;
         document.getElementById('fTimeSpan').textContent = `${startStr}–${endStr}`;
@@ -755,7 +1165,7 @@
       const txt = document.getElementById('statusText');
       dot.className = isLive ? 'dot live' : 'dot';
       txt.textContent = isLive ? 'Bollerwagen LIVE' : 'Offline (Letzter Ort)';
-      document.getElementById('subInfo').textContent = `Signal ${formatAge(diffSec)} • Höhe: ${Math.round(lastLiveData.alt || 0)} m`;
+      document.getElementById('subInfo').textContent = `Signal ${formatAge(diffSec)} • ${Number(lastLiveData.tilt || 0).toFixed(1)}° • ${Math.round(lastLiveData.alt || 0)} m`;
 
       document.getElementById('valSpeed').textContent = isLive ? `${Number(lastLiveData.speed || 0).toFixed(1)} km/h` : '0.0 km/h';
       document.getElementById('valCruise').textContent = isLive ? (lastLiveData.cruise ? 'Tempomat' : 'Manuell') : 'Aus';
@@ -784,6 +1194,23 @@
         } else {
           liveMarker.setLatLng(pos);
           if (autoFollow && !navActive) map.panTo(pos);
+        }
+
+        // Live-Punkt in das Entwickler-Diagramm einfügen (falls neuer Zeitstempel)
+        const ptTs = Math.floor((data.ts || Date.now()) / 1000);
+        if (chartPoints.length === 0 || chartPoints[chartPoints.length - 1].ts < ptTs) {
+          chartPoints.push({
+            ts: ptTs,
+            lat: data.lat,
+            lon: data.lon,
+            alt: Number(data.alt || 0),
+            spd: Number(data.speed || 0),
+            tlt: Number(data.tilt || 0),
+            dac: Number(data.dac || 0),
+            cr: Boolean(data.cruise)
+          });
+          if (chartPoints.length > 600) chartPoints.shift();
+          if (devDrawerOpen) updateChartUI();
         }
 
         updateLiveHud();
