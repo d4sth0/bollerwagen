@@ -1,1 +1,169 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Bollerwagen Live-Tracker</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body, html { margin: 0; padding: 0; width: 100%; height: 100dvh; overflow: hidden; background: #121212; }
+    #map { width: 100%; height: 100%; z-index: 1; }
 
+    .hud-card {
+      position: absolute; top: 12px; left: 12px; right: 12px; max-width: 420px; margin: 0 auto;
+      background: rgba(20, 20, 20, 0.92); backdrop-filter: blur(8px); color: #fff;
+      padding: 12px 16px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.45); z-index: 1000;
+    }
+    .hud-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .title { font-weight: 800; font-size: 16px; letter-spacing: 0.3px; display: flex; align-items: center; gap: 8px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #757575; display: inline-block; }
+    .dot.live { background: #00e676; box-shadow: 0 0 10px #00e676; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+    .age { font-size: 12px; color: #bdbdbd; }
+
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; background: rgba(255,255,255,0.06); padding: 8px; border-radius: 10px; }
+    .stat-val { font-size: 16px; font-weight: 700; color: #fff; }
+    .stat-lbl { font-size: 11px; color: #9e9e9e; margin-top: 2px; }
+
+    .fab-container {
+      position: absolute; bottom: 24px; right: 14px; display: flex; flex-direction: column; gap: 10px; z-index: 1000;
+    }
+    .fab {
+      background: rgba(25, 25, 25, 0.92); color: #fff; border: 1px solid rgba(255,255,255,0.15);
+      padding: 12px 16px; border-radius: 24px; font-size: 14px; font-weight: 600; cursor: pointer;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.4); display: flex; align-items: center; gap: 6px; text-decoration: none;
+    }
+    .fab:active { transform: scale(0.96); }
+    .fab.active { background: #1976d2; border-color: #42a5f5; }
+
+    .wagon-marker {
+      background: #d32f2f; color: #fff; border: 3px solid #fff; border-radius: 50%;
+      width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+      font-size: 18px; box-shadow: 0 3px 12px rgba(0,0,0,0.6);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="hud-card">
+    <div class="hud-header">
+      <div class="title"><span id="statusDot" class="dot"></span><span id="statusText">Verbinde...</span></div>
+      <div id="timeAgo" class="age">---</div>
+    </div>
+    <div class="stats">
+      <div>
+        <div id="valSpeed" class="stat-val">-- km/h</div>
+        <div class="stat-lbl">Geschwindigkeit</div>
+      </div>
+      <div>
+        <div id="valCruise" class="stat-val">---</div>
+        <div class="stat-lbl">Modus</div>
+      </div>
+      <div>
+        <div id="valAlt" class="stat-val">-- m</div>
+        <div class="stat-lbl">Höhe</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <div class="fab-container">
+    <a id="navBtn" class="fab" href="#" target="_blank" style="display:none;">📍 Route öffnen</a>
+    <button id="followBtn" class="fab active" onclick="toggleFollow()">🎯 Zentrieren</button>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const DB_URL = "https://bollerwagen-karte-default-rtdb.europe-west1.firebasedatabase.app/status.json";
+
+    const map = L.map('map', { zoomControl: false }).setView([51.1657, 10.4515], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    const wagonIcon = L.divIcon({
+      className: '',
+      html: '<div class="wagon-marker">🛒</div>',
+      iconSize: [36, 36],
+      iconAnchor: [18, 18]
+    });
+
+    let marker = null;
+    let autoFollow = true;
+    let lastData = null;
+
+    map.on('dragstart', () => {
+      autoFollow = false;
+      document.getElementById('followBtn').classList.remove('active');
+    });
+
+    function toggleFollow() {
+      autoFollow = true;
+      document.getElementById('followBtn').classList.add('active');
+      if (lastData) map.setView([lastData.lat, lastData.lon], Math.max(map.getZoom(), 17));
+    }
+
+    function formatAge(diffSec) {
+      if (diffSec < 60) return `vor ${diffSec} Sek.`;
+      const mins = Math.floor(diffSec / 60);
+      if (mins < 60) return `vor ${mins} Min.`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `vor ${hours} Std.`;
+      return `vor ${Math.floor(hours / 24)} Tag(en)`;
+    }
+
+    function updateHud() {
+      if (!lastData) return;
+      const diffSec = Math.max(0, Math.floor((Date.now() - lastData.ts) / 1000));
+      const isLive = diffSec <= 35;
+
+      const dot = document.getElementById('statusDot');
+      const txt = document.getElementById('statusText');
+      dot.className = isLive ? 'dot live' : 'dot';
+      txt.textContent = isLive ? 'Bollerwagen LIVE' : 'Zuletzt gesehen (Aus)';
+      document.getElementById('timeAgo').textContent = formatAge(diffSec);
+
+      document.getElementById('valSpeed').textContent = isLive ? `${lastData.speed.toFixed(1)} km/h` : '0.0 km/h';
+      document.getElementById('valCruise').textContent = isLive ? (lastData.cruise ? 'Tempomat' : 'Manuell') : 'Aus';
+      document.getElementById('valAlt').textContent = `${Math.round(lastData.alt)} m`;
+    }
+
+    async function fetchLocation() {
+      try {
+        const res = await fetch(DB_URL + "?t=" + Date.now());
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data || typeof data.lat !== 'number' || typeof data.lon !== 'number') {
+          document.getElementById('statusText').textContent = 'Warte auf 1. GPS-Signal...';
+          return;
+        }
+
+        lastData = data;
+        const pos = [data.lat, data.lon];
+
+        if (!marker) {
+          marker = L.marker(pos, { icon: wagonIcon }).addTo(map);
+          map.setView(pos, 17);
+        } else {
+          marker.setLatLng(pos);
+          if (autoFollow) map.panTo(pos);
+        }
+
+        const navBtn = document.getElementById('navBtn');
+        navBtn.style.display = 'flex';
+        navBtn.href = `https://www.google.com/maps/dir/?api=1&destination=${data.lat},${data.lon}&travelmode=walking`;
+
+        updateHud();
+      } catch (e) {}
+    }
+
+    fetchLocation();
+    setInterval(fetchLocation, 5000);
+    setInterval(updateHud, 1000);
+  </script>
+</body>
+</html>
