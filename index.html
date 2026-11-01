@@ -6,72 +6,153 @@
   <title>Bollerwagen Live-Tracker & Touren</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
     body, html { margin: 0; padding: 0; width: 100%; height: 100dvh; overflow: hidden; background: #121212; }
     #map { width: 100%; height: 100%; z-index: 1; }
 
+    /* =========================================================
+       BASIS-LAYOUT (MOBILE FIRST - SMARTPHONES)
+       ========================================================= */
     .hud-card {
-      position: absolute; top: 10px; left: 10px; right: 10px; max-width: 460px; margin: 0 auto;
-      background: rgba(20, 20, 20, 0.94); backdrop-filter: blur(10px); color: #fff;
-      padding: 12px 14px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.14);
-      box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 1000;
+      position: absolute; top: 8px; left: 8px; right: 8px; margin: 0 auto;
+      background: rgba(18, 18, 18, 0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      color: #fff; padding: 10px 12px; border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.14);
+      box-shadow: 0 6px 24px rgba(0,0,0,0.5); z-index: 1000;
+      transition: all 0.2s ease;
     }
-    .hud-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
-    .title { font-weight: 800; font-size: 15px; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; background: #757575; display: inline-block; flex-shrink: 0; }
-    .dot.live { background: #00e676; box-shadow: 0 0 10px #00e676; animation: pulse 1.5s infinite; }
+    .hud-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .title { font-weight: 800; font-size: 14px; display: flex; align-items: center; gap: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #757575; display: inline-block; flex-shrink: 0; }
+    .dot.live { background: #00e676; box-shadow: 0 0 8px #00e676; animation: pulse 1.5s infinite; }
     .dot.history { background: #29b6f6; box-shadow: 0 0 8px #29b6f6; }
     @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.35; } 100% { opacity: 1; } }
 
     .mode-select {
-      background: #2b2b2b; color: #fff; border: 1px solid #444; border-radius: 10px;
-      padding: 6px 10px; font-size: 13px; font-weight: 600; outline: none; max-width: 195px;
+      background: #2b2b2b; color: #fff; border: 1px solid #444; border-radius: 8px;
+      padding: 5px 8px; font-size: 12px; font-weight: 600; outline: none; max-width: 175px; flex-shrink: 0; cursor: pointer;
     }
+    .mode-select:hover { border-color: #666; }
 
-    .sub-bar { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #bdbdbd; margin-bottom: 8px; }
+    .sub-bar { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #bdbdbd; margin-bottom: 6px; }
     .toggle-facts-btn {
-      background: rgba(255,255,255,0.1); color: #fff; border: none; border-radius: 8px;
-      padding: 4px 9px; font-size: 11px; font-weight: 600; cursor: pointer; display: none;
+      background: rgba(255,255,255,0.12); color: #fff; border: none; border-radius: 6px;
+      padding: 3px 8px; font-size: 10px; font-weight: 600; cursor: pointer; display: none; white-space: nowrap;
     }
+    .toggle-facts-btn:hover { background: rgba(255,255,255,0.2); }
+
+    .nav-banner {
+      display: none; justify-content: space-between; align-items: center; gap: 8px;
+      background: rgba(25, 118, 210, 0.28); border: 1px solid rgba(66, 165, 245, 0.45);
+      padding: 6px 10px; border-radius: 9px; margin-bottom: 7px; font-size: 12px; font-weight: 600; color: #e3f2fd;
+    }
+    .gmaps-link {
+      background: rgba(255,255,255,0.15); color: #fff; text-decoration: none;
+      padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; white-space: nowrap;
+    }
+    .gmaps-link:hover { background: rgba(255,255,255,0.28); }
 
     .stats-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; text-align: center;
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; text-align: center;
     }
     .stat-box {
-      background: rgba(255,255,255,0.06); padding: 8px 6px; border-radius: 10px;
+      background: rgba(255,255,255,0.06); padding: 6px 4px; border-radius: 8px;
       border: 1px solid rgba(255,255,255,0.05);
     }
-    .stat-val { font-size: 14px; font-weight: 700; color: #fff; line-height: 1.2; }
-    .stat-sub { font-size: 11px; color: #81d4fa; font-weight: 600; margin-top: 2px; }
-    .stat-lbl { font-size: 10px; color: #9e9e9e; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.4px; }
+    .stat-val { font-size: 13px; font-weight: 700; color: #fff; line-height: 1.15; }
+    .stat-sub { font-size: 10px; color: #81d4fa; font-weight: 600; margin-top: 2px; line-height: 1.1; }
+    .stat-lbl { font-size: 9px; color: #9e9e9e; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.3px; }
 
     .legend {
-      display: none; justify-content: center; gap: 14px; font-size: 11px; color: #ccc;
-      margin-top: 9px; padding-top: 7px; border-top: 1px solid rgba(255,255,255,0.1);
+      display: none; justify-content: center; flex-wrap: wrap; gap: 10px; font-size: 10px; color: #ccc;
+      margin-top: 7px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.1);
     }
-    .legend span { display: flex; align-items: center; gap: 5px; }
-    .line-sample { width: 16px; height: 4px; border-radius: 2px; display: inline-block; }
+    .legend span { display: flex; align-items: center; gap: 4px; }
+    .line-sample { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
 
     .fab-container {
-      position: absolute; bottom: 22px; right: 12px; display: flex; flex-direction: column; gap: 10px; z-index: 1000;
+      position: absolute; bottom: 18px; right: 10px; display: flex; flex-direction: column; gap: 8px; z-index: 1000;
     }
     .fab {
-      background: rgba(25, 25, 25, 0.92); color: #fff; border: 1px solid rgba(255,255,255,0.15);
-      padding: 11px 15px; border-radius: 24px; font-size: 13px; font-weight: 600; cursor: pointer;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.45); display: flex; align-items: center; gap: 6px; text-decoration: none;
+      background: rgba(25, 25, 25, 0.92); color: #fff; border: 1px solid rgba(255,255,255,0.18);
+      padding: 10px 14px; border-radius: 22px; font-size: 12px; font-weight: 700; cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; gap: 6px;
+      transition: transform 0.1s ease, background 0.15s ease;
     }
+    .fab:hover { background: rgba(45, 45, 45, 0.96); }
     .fab:active { transform: scale(0.96); }
-    .fab.active { background: #1976d2; border-color: #42a5f5; }
+    .fab.active { background: #1976d2; border-color: #64b5f6; }
+    .fab.nav-active { background: #00897b; border-color: #4db6ac; }
+
+    /* Auf Smartphones keine +/- Zoom-Buttons nötig (Pinch-to-Zoom) */
+    .leaflet-control-zoom { display: none; }
+
+    /* =========================================================
+       SEHR SCHMALE HANDYS (z.B. iPhone SE / kleine Screens < 360px)
+       ========================================================= */
+    @media (max-width: 360px) {
+      .hud-card { padding: 8px 10px; }
+      .title { font-size: 13px; }
+      .mode-select { max-width: 145px; font-size: 11px; }
+      .stat-val { font-size: 12px; }
+    }
+
+    /* =========================================================
+       TABLET & DESKTOP ANSICHT (ab 768px Bildschirmbreite)
+       ========================================================= */
+    @media (min-width: 768px) {
+      .hud-card {
+        top: 20px; left: 20px; right: auto; margin: 0;
+        width: 390px; padding: 16px 18px; border-radius: 18px;
+        box-shadow: 0 10px 32px rgba(0,0,0,0.55);
+      }
+      .hud-top { margin-bottom: 10px; }
+      .title { font-size: 17px; gap: 9px; }
+      .dot { width: 11px; height: 11px; }
+      .mode-select { max-width: 200px; font-size: 13px; padding: 6px 10px; border-radius: 10px; }
+      .sub-bar { font-size: 12px; margin-bottom: 10px; }
+      .toggle-facts-btn { font-size: 11px; padding: 4px 10px; border-radius: 7px; }
+      .nav-banner { font-size: 13px; padding: 8px 12px; margin-bottom: 10px; }
+      .gmaps-link { font-size: 12px; padding: 4px 10px; }
+
+      .stats-grid { gap: 8px; }
+      .stat-box { padding: 10px 8px; border-radius: 11px; }
+      .stat-val { font-size: 15px; }
+      .stat-sub { font-size: 11px; margin-top: 3px; }
+      .stat-lbl { font-size: 10px; margin-top: 4px; }
+
+      .legend { font-size: 11px; gap: 14px; margin-top: 10px; padding-top: 8px; }
+
+      .fab-container { bottom: 28px; right: 24px; gap: 10px; }
+      .fab { padding: 12px 18px; font-size: 14px; border-radius: 26px; }
+
+      /* Auf großen Bildschirmen +/- Zoom-Steuerung für die Maus einblenden */
+      .leaflet-control-zoom { display: block; border: none !important; box-shadow: 0 4px 14px rgba(0,0,0,0.4) !important; }
+      .leaflet-control-zoom a { background: rgba(25,25,25,0.92) !important; color: #fff !important; border-color: rgba(255,255,255,0.15) !important; }
+      .leaflet-control-zoom a:hover { background: #333 !important; }
+    }
+
+    /* =========================================================
+       GROSSE DESKTOP-MONITORE (ab 1200px)
+       ========================================================= */
+    @media (min-width: 1200px) {
+      .hud-card { width: 420px; padding: 18px 20px; }
+      .stat-val { font-size: 16px; }
+    }
 
     .wagon-marker {
-      background: #d32f2f; color: #fff; border: 3px solid #fff; border-radius: 50%;
-      width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
-      font-size: 18px; box-shadow: 0 3px 12px rgba(0,0,0,0.6);
+      background: #d32f2f; color: #fff; border: 2.5px solid #fff; border-radius: 50%;
+      width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+      font-size: 17px; box-shadow: 0 3px 10px rgba(0,0,0,0.6);
+    }
+    .user-marker {
+      background: #2979ff; border: 2.5px solid #fff; border-radius: 50%;
+      width: 16px; height: 16px; box-shadow: 0 0 10px rgba(41, 121, 255, 0.9);
     }
     .pin-marker {
       background: #212121; color: #fff; border: 2px solid #fff; border-radius: 50%;
-      width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
-      font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+      font-size: 13px; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
     }
   </style>
 </head>
@@ -89,8 +170,14 @@
     </div>
 
     <div class="sub-bar">
-      <span id="subInfo">Warte auf Daten...</span>
-      <button id="toggleFactsBtn" class="toggle-facts-btn" onclick="toggleStats()">Statistik ausblenden ▲</button>
+      <span id="subInfo">Warte auf GPS-Daten...</span>
+      <button id="toggleFactsBtn" class="toggle-facts-btn" onclick="toggleStats()">Ausblenden ▲</button>
+    </div>
+
+    <!-- DYNAMISCHES LIVE-NAVI BANNER -->
+    <div id="navBanner" class="nav-banner">
+      <span id="navText">🧭 Suche eigenen Standort...</span>
+      <a id="gmapsLink" class="gmaps-link" href="#" target="_blank">↗ Maps</a>
     </div>
 
     <!-- LIVE ANSICHT -->
@@ -124,17 +211,17 @@
       <div class="stat-box">
         <div id="fDriveTime" class="stat-val">--</div>
         <div id="fPauseInfo" class="stat-sub">-- Pause</div>
-        <div class="stat-lbl">Reine Fahrzeit</div>
+        <div class="stat-lbl">Fahrzeit</div>
       </div>
       <div class="stat-box">
         <div id="fAvgSpeed" class="stat-val">Ø -- km/h</div>
-        <div id="fMaxSpeed" class="stat-sub">Max: -- km/h</div>
+        <div id="fMaxSpeed" class="stat-sub">Top: -- km/h</div>
         <div class="stat-lbl">Tempi</div>
       </div>
       <div class="stat-box">
         <div id="fCruisePct" class="stat-val">-- %</div>
         <div id="fCruiseKm" class="stat-sub">-- km Cruise</div>
-        <div class="stat-lbl">Tempomat-Quote</div>
+        <div class="stat-lbl">Tempomat</div>
       </div>
       <div class="stat-box">
         <div id="fElevGain" class="stat-val">+-- m</div>
@@ -147,7 +234,7 @@
       <span><i class="line-sample" style="background:#29b6f6;"></i>Tempomat</span>
       <span><i class="line-sample" style="background:#ffa726;"></i>Manuell</span>
       <span>🟢 Start</span>
-      <span>🍺 Pause (&gt;5m)</span>
+      <span>🍺 Pause</span>
       <span>🏁 Ziel</span>
     </div>
   </div>
@@ -155,7 +242,7 @@
   <div id="map"></div>
 
   <div class="fab-container">
-    <a id="navBtn" class="fab" href="#" target="_blank" style="display:none;">📍 Route öffnen</a>
+    <button id="locateBtn" class="fab" onclick="toggleLiveNav()">🧭 Live-Navi</button>
     <button id="followBtn" class="fab active" onclick="centerMap()">🎯 Zentrieren</button>
   </div>
 
@@ -164,6 +251,8 @@
     const BASE_URL = "https://bollerwagen-karte-default-rtdb.europe-west1.firebasedatabase.app";
 
     const map = L.map('map', { zoomControl: false }).setView([51.1657, 10.4515], 6);
+    L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '© OpenStreetMap'
@@ -172,26 +261,45 @@
     const wagonIcon = L.divIcon({
       className: '',
       html: '<div class="wagon-marker">🛒</div>',
-      iconSize: [36, 36],
-      iconAnchor: [18, 18]
+      iconSize: [34, 34],
+      iconAnchor: [17, 17]
+    });
+
+    const userIcon = L.divIcon({
+      className: '',
+      html: '<div class="user-marker"></div>',
+      iconSize: [16, 16],
+      iconAnchor: [8, 8]
     });
 
     function makePin(emoji, bg) {
       return L.divIcon({
         className: '',
         html: `<div class="pin-marker" style="background:${bg}">${emoji}</div>`,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14]
+        iconSize: [26, 26],
+        iconAnchor: [13, 13]
       });
     }
 
     let liveMarker = null;
     let historyLayerGroup = L.layerGroup().addTo(map);
+    let navLayerGroup = L.layerGroup().addTo(map);
+
     let currentMode = 'live';
     let autoFollow = true;
     let lastLiveData = null;
     let currentTrackBounds = null;
     let statsCollapsed = false;
+
+    // Eigener Standort & Live-Navigation
+    let navActive = false;
+    let geoWatchId = null;
+    let userPos = null;
+    let userMarker = null;
+    let userAccCircle = null;
+    let lastRoutedUser = null;
+    let lastRoutedWagon = null;
+    let isRoutingBusy = false;
 
     map.on('dragstart', () => {
       if (currentMode === 'live') {
@@ -200,24 +308,39 @@
       }
     });
 
+    function getFitPadding() {
+      return window.innerWidth >= 768
+        ? { paddingTopLeft: [430, 50], paddingBottomRight: [50, 50], maxZoom: 18 }
+        : { paddingTopLeft: [30, 190], paddingBottomRight: [30, 70], maxZoom: 18 };
+    }
+
     function centerMap() {
       if (currentMode === 'live') {
         autoFollow = true;
         document.getElementById('followBtn').classList.add('active');
-        if (lastLiveData) map.setView([lastLiveData.lat, lastLiveData.lon], Math.max(map.getZoom(), 17));
+        if (navActive && userPos && lastLiveData) {
+          const b = L.latLngBounds([[userPos.lat, userPos.lon], [lastLiveData.lat, lastLiveData.lon]]);
+          map.fitBounds(b, getFitPadding());
+        } else if (lastLiveData) {
+          map.setView([lastLiveData.lat, lastLiveData.lon], Math.max(map.getZoom(), 17));
+        } else if (userPos) {
+          map.setView([userPos.lat, userPos.lon], 17);
+        }
       } else if (currentTrackBounds) {
-        map.fitBounds(currentTrackBounds, { padding: [50, 50] });
+        map.fitBounds(currentTrackBounds, getFitPadding());
       }
     }
 
     function toggleStats() {
       statsCollapsed = !statsCollapsed;
-      const histGrid = document.getElementById('historyStats');
+      const isHist = (currentMode !== 'live');
+      const targetGrid = document.getElementById(isHist ? 'historyStats' : 'liveStats');
       const legend = document.getElementById('routeLegend');
       const btn = document.getElementById('toggleFactsBtn');
-      histGrid.style.display = statsCollapsed ? 'none' : 'grid';
-      legend.style.display = statsCollapsed ? 'none' : 'flex';
-      btn.textContent = statsCollapsed ? 'Nice Facts einblenden ▼' : 'Statistik ausblenden ▲';
+
+      targetGrid.style.display = statsCollapsed ? 'none' : 'grid';
+      if (isHist) legend.style.display = statsCollapsed ? 'none' : 'flex';
+      btn.textContent = statsCollapsed ? 'Infos ▼' : 'Ausblenden ▲';
     }
 
     function haversineKm(lat1, lon1, lat2, lon2) {
@@ -229,6 +352,21 @@
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
+    function getCompassDirection(lat1, lon1, lat2, lon2) {
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180);
+      const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+                Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon);
+      const brng = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+      const dirs = ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'];
+      return dirs[Math.round(brng / 45) % 8];
+    }
+
+    function formatDist(meters) {
+      if (meters < 1000) return `${Math.round(meters)} m`;
+      return `${(meters / 1000).toFixed(2)} km`;
+    }
+
     function formatDuration(sec) {
       sec = Math.max(0, Math.round(sec));
       const h = Math.floor(sec / 3600);
@@ -238,12 +376,12 @@
     }
 
     function formatAge(diffSec) {
-      if (diffSec < 60) return `vor ${diffSec} Sek.`;
+      if (diffSec < 60) return `vor ${diffSec}s`;
       const mins = Math.floor(diffSec / 60);
-      if (mins < 60) return `vor ${mins} Min.`;
+      if (mins < 60) return `vor ${mins}m`;
       const hours = Math.floor(mins / 60);
-      if (hours < 24) return `vor ${hours} Std.`;
-      return `vor ${Math.floor(hours / 24)} Tag(en)`;
+      if (hours < 24) return `vor ${hours}h`;
+      return `vor ${Math.floor(hours / 24)}d`;
     }
 
     function formatDateLabel(yyyy_mm_dd) {
@@ -251,9 +389,140 @@
       if (parts.length !== 3) return yyyy_mm_dd;
       const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
       const days = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-      return `📅 ${days[dateObj.getDay()]}, ${parts[2]}.${parts[1]}.${parts[0]}`;
+      return `📅 ${days[dateObj.getDay()]}, ${parts[2]}.${parts[1]}.${parts[0].slice(2)}`;
     }
 
+    // =====================================================
+    // EIGENER STANDORT & DYNAMISCHE FUSSGÄNGER-NAVIGATION
+    // =====================================================
+    function toggleLiveNav() {
+      const btn = document.getElementById('locateBtn');
+      const banner = document.getElementById('navBanner');
+
+      if (!navActive) {
+        if (!navigator.geolocation) {
+          alert('Dein Browser unterstützt leider keine Standortfreigabe.');
+          return;
+        }
+        navActive = true;
+        btn.classList.add('nav-active');
+        btn.textContent = '🧭 Navi aktiv';
+        banner.style.display = 'flex';
+        document.getElementById('navText').textContent = '📡 Ermittle eigenen Standort...';
+
+        geoWatchId = navigator.geolocation.watchPosition(
+          onUserPosition,
+          () => {
+            document.getElementById('navText').textContent = '⚠️ Standortzugriff bitte erlauben';
+          },
+          { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+        );
+      } else {
+        navActive = false;
+        btn.classList.remove('nav-active');
+        btn.textContent = '🧭 Live-Navi';
+        banner.style.display = 'none';
+        if (geoWatchId !== null) {
+          navigator.geolocation.clearWatch(geoWatchId);
+          geoWatchId = null;
+        }
+        if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
+        if (userAccCircle) { map.removeLayer(userAccCircle); userAccCircle = null; }
+        navLayerGroup.clearLayers();
+        userPos = null;
+        lastRoutedUser = null;
+        lastRoutedWagon = null;
+      }
+    }
+
+    function onUserPosition(pos) {
+      userPos = {
+        lat: pos.coords.latitude,
+        lon: pos.coords.longitude,
+        acc: pos.coords.accuracy || 15
+      };
+
+      const latlng = [userPos.lat, userPos.lon];
+      if (!userMarker) {
+        userAccCircle = L.circle(latlng, { radius: userPos.acc, color: '#2979ff', weight: 1, fillOpacity: 0.12 }).addTo(map);
+        userMarker = L.marker(latlng, { icon: userIcon, zIndexOffset: 900 }).bindPopup('<b>Dein Standort</b>').addTo(map);
+        centerMap();
+      } else {
+        userMarker.setLatLng(latlng);
+        userAccCircle.setLatLng(latlng);
+        userAccCircle.setRadius(userPos.acc);
+      }
+
+      updateDynamicRoute(false);
+    }
+
+    async function updateDynamicRoute(force) {
+      if (!navActive || !userPos || !lastLiveData || currentMode !== 'live') return;
+
+      const directMeters = haversineKm(userPos.lat, userPos.lon, lastLiveData.lat, lastLiveData.lon) * 1000;
+      const compass = getCompassDirection(userPos.lat, userPos.lon, lastLiveData.lat, lastLiveData.lon);
+
+      const gmaps = document.getElementById('gmapsLink');
+      gmaps.href = `https://www.google.com/maps/dir/?api=1&destination=${lastLiveData.lat},${lastLiveData.lon}&travelmode=walking`;
+
+      if (directMeters < 15) {
+        navLayerGroup.clearLayers();
+        document.getElementById('navText').textContent = `🎉 Du bist beim Bollerwagen (${Math.round(directMeters)} m)`;
+        return;
+      }
+
+      const movedUser = !lastRoutedUser || (haversineKm(userPos.lat, userPos.lon, lastRoutedUser.lat, lastRoutedUser.lon) * 1000 >= 15);
+      const movedWagon = !lastRoutedWagon || (haversineKm(lastLiveData.lat, lastLiveData.lon, lastRoutedWagon.lat, lastRoutedWagon.lon) * 1000 >= 15);
+
+      if (!force && !movedUser && !movedWagon) return;
+      if (isRoutingBusy) return;
+      isRoutingBusy = true;
+
+      try {
+        const url = `https://router.project-osrm.org/route/v1/foot/${userPos.lon},${userPos.lat};${lastLiveData.lon},${lastLiveData.lat}?overview=full&geometries=geojson`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error();
+        const json = await res.json();
+
+        navLayerGroup.clearLayers();
+
+        if (json.routes && json.routes.length > 0) {
+          const route = json.routes[0];
+          const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+          const routeMeters = route.distance;
+          const walkMins = Math.max(1, Math.round(routeMeters / 78));
+
+          L.polyline([[userPos.lat, userPos.lon], [lastLiveData.lat, lastLiveData.lon]], {
+            color: '#90caf9', weight: 2, opacity: 0.35, dashArray: '4, 8'
+          }).addTo(navLayerGroup);
+
+          L.polyline(coords, {
+            color: '#00e5ff', weight: 5, opacity: 0.85, dashArray: '8, 8'
+          }).addTo(navLayerGroup);
+
+          document.getElementById('navText').textContent = `🏃 Fußweg: ${formatDist(routeMeters)} (~${walkMins} Min. • ${compass})`;
+        } else {
+          throw new Error();
+        }
+
+        lastRoutedUser = { ...userPos };
+        lastRoutedWagon = { lat: lastLiveData.lat, lon: lastLiveData.lon };
+      } catch (e) {
+        navLayerGroup.clearLayers();
+        L.polyline([[userPos.lat, userPos.lon], [lastLiveData.lat, lastLiveData.lon]], {
+          color: '#00e5ff', weight: 4, opacity: 0.85, dashArray: '6, 8'
+        }).addTo(navLayerGroup);
+
+        const walkMins = Math.max(1, Math.round(directMeters / 75));
+        document.getElementById('navText').textContent = `🧭 Luftlinie: ${formatDist(directMeters)} (~${walkMins} Min. Richtung ${compass})`;
+      } finally {
+        isRoutingBusy = false;
+      }
+    }
+
+    // =====================================================
+    // TOUREN-HISTORIE & LIVE-POLLING
+    // =====================================================
     async function loadAvailableDays() {
       try {
         const res = await fetch(`${BASE_URL}/tracks.json?shallow=true&t=${Date.now()}`);
@@ -286,28 +555,32 @@
       const histGrid = document.getElementById('historyStats');
       const legend = document.getElementById('routeLegend');
       const toggleBtn = document.getElementById('toggleFactsBtn');
-      const navBtn = document.getElementById('navBtn');
+      const locateBtn = document.getElementById('locateBtn');
+      const navBanner = document.getElementById('navBanner');
+
+      statsCollapsed = false;
+      toggleBtn.style.display = 'inline-block';
+      toggleBtn.textContent = 'Ausblenden ▲';
 
       if (val === 'live') {
         historyLayerGroup.clearLayers();
         liveGrid.style.display = 'grid';
         histGrid.style.display = 'none';
         legend.style.display = 'none';
-        toggleBtn.style.display = 'none';
+        locateBtn.style.display = 'flex';
+        if (navActive) navBanner.style.display = 'flex';
         if (liveMarker) liveMarker.setOpacity(1);
-        if (lastLiveData) navBtn.style.display = 'flex';
         autoFollow = true;
         document.getElementById('followBtn').classList.add('active');
         fetchLiveStatus();
       } else {
-        if (liveMarker) liveMarker.setOpacity(0.25);
-        navBtn.style.display = 'none';
+        if (liveMarker) liveMarker.setOpacity(0.2);
+        navLayerGroup.clearLayers();
+        navBanner.style.display = 'none';
+        locateBtn.style.display = 'none';
         liveGrid.style.display = 'none';
-        statsCollapsed = false;
         histGrid.style.display = 'grid';
         legend.style.display = 'flex';
-        toggleBtn.style.display = 'inline-block';
-        toggleBtn.textContent = 'Statistik ausblenden ▲';
         document.getElementById('followBtn').classList.remove('active');
         loadDayTrack(val);
       }
@@ -315,8 +588,8 @@
 
     async function loadDayTrack(dateKey) {
       document.getElementById('statusDot').className = 'dot history';
-      document.getElementById('statusText').textContent = 'Lade Tour...';
-      document.getElementById('subInfo').textContent = formatDateLabel(dateKey);
+      document.getElementById('statusText').textContent = 'Tour-Rückblick';
+      document.getElementById('subInfo').textContent = `Lade ${formatDateLabel(dateKey)}...`;
 
       try {
         const res = await fetch(`${BASE_URL}/tracks/${dateKey}.json`);
@@ -324,7 +597,7 @@
         historyLayerGroup.clearLayers();
 
         if (!raw || typeof raw !== 'object') {
-          document.getElementById('statusText').textContent = 'Keine Daten';
+          document.getElementById('subInfo').textContent = 'Keine Routendaten an diesem Tag';
           return;
         }
 
@@ -343,7 +616,6 @@
 
         if (points.length === 0) return;
 
-        // Nice Facts berechnen
         let gpsDistKm = 0;
         let cruiseDistKm = 0;
         let driveSec = 0;
@@ -366,13 +638,11 @@
           const dt = p2.ts - p1.ts;
           const segKm = haversineKm(p1.lat, p1.lon, p2.lat, p2.lon);
 
-          // Sinnvolle Segmente addieren (Schutz vor GPS-Ausreißern)
           if (segKm < 0.5) {
             gpsDistKm += segKm;
             if (p2.cr) cruiseDistKm += segKm;
           }
 
-          // Fahrzeit vs. Pause (Lücke > 120s gilt als Pause)
           if (dt <= 60) {
             driveSec += dt;
           } else if (dt <= 120) {
@@ -393,7 +663,6 @@
           if (p2.alt < minAlt) minAlt = p2.alt;
           if (p2.alt > maxAlt) maxAlt = p2.alt;
 
-          // Höhenmeter-Hysterese (3m Schwelle gegen GPS-Rauschen)
           if (p2.alt - lastSmoothAlt >= 3.0) {
             elevGain += (p2.alt - lastSmoothAlt);
             lastSmoothAlt = p2.alt;
@@ -401,7 +670,6 @@
             lastSmoothAlt = p2.alt;
           }
 
-          // Farbige Linie je nach Modus (Tempomat = Blau, Manuell = Orange)
           const segColor = p2.cr ? '#29b6f6' : '#ffa726';
           const tStr = new Date(p2.ts * 1000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
           L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {
@@ -410,7 +678,6 @@
             .addTo(historyLayerGroup);
         }
 
-        // Start- & Ziel-Marker
         const first = points[0];
         const last = points[points.length - 1];
         const startStr = new Date(first.ts * 1000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
@@ -427,20 +694,19 @@
         }
 
         currentTrackBounds = L.latLngBounds(allLatLngs);
-        map.fitBounds(currentTrackBounds, { padding: [50, 50] });
+        map.fitBounds(currentTrackBounds, getFitPadding());
 
-        // Rad-Sensor-Distanz heranziehen, falls plausibel größer als reine Luftlinien-Summe
         const odoDelta = (last.km >= first.km) ? (last.km - first.km) : 0;
         const bestDistKm = Math.max(gpsDistKm, odoDelta);
         const totalDurSec = Math.max(0, last.ts - first.ts);
         const avgMovingKmh = driveSec > 60 ? (bestDistKm / (driveSec / 3600)) : 0;
         const cruisePct = gpsDistKm > 0.01 ? Math.round((cruiseDistKm / gpsDistKm) * 100) : 0;
 
-        document.getElementById('statusText').textContent = 'Tour-Rückblick';
+        document.getElementById('subInfo').textContent = `${formatDateLabel(dateKey)} • ${points.length} GPS-Punkte`;
         document.getElementById('fDist').textContent = `${bestDistKm.toFixed(2)} km`;
-        document.getElementById('fPoints').textContent = `${points.length} Messpunkte`;
-        document.getElementById('fTimeSpan').textContent = `${startStr} – ${endStr}`;
-        document.getElementById('fTotalDur').textContent = `Gesamt: ${formatDuration(totalDurSec)}`;
+        document.getElementById('fPoints').textContent = `${points.length} Punkte`;
+        document.getElementById('fTimeSpan').textContent = `${startStr}–${endStr}`;
+        document.getElementById('fTotalDur').textContent = `Dauer: ${formatDuration(totalDurSec)}`;
         document.getElementById('fDriveTime').textContent = formatDuration(driveSec);
         document.getElementById('fPauseInfo').textContent = `${pauseCount} Stopps (${formatDuration(pauseSec)})`;
         document.getElementById('fAvgSpeed').textContent = `Ø ${avgMovingKmh.toFixed(1)} km/h`;
@@ -448,9 +714,9 @@
         document.getElementById('fCruisePct').textContent = `${cruisePct} %`;
         document.getElementById('fCruiseKm').textContent = `${(bestDistKm * cruisePct / 100).toFixed(2)} km Cruise`;
         document.getElementById('fElevGain').textContent = `+${Math.round(elevGain)} m`;
-        document.getElementById('fAltRange').textContent = `${Math.round(minAlt)}m – ${Math.round(maxAlt)}m`;
+        document.getElementById('fAltRange').textContent = `${Math.round(minAlt)}–${Math.round(maxAlt)} m`;
       } catch (e) {
-        document.getElementById('statusText').textContent = 'Fehler beim Laden';
+        document.getElementById('subInfo').textContent = 'Fehler beim Laden der Tour';
       }
     }
 
@@ -462,8 +728,8 @@
       const dot = document.getElementById('statusDot');
       const txt = document.getElementById('statusText');
       dot.className = isLive ? 'dot live' : 'dot';
-      txt.textContent = isLive ? 'Bollerwagen LIVE' : 'Zuletzt gesehen (Aus)';
-      document.getElementById('subInfo').textContent = `Letztes Signal: ${formatAge(diffSec)} • Höhe: ${Math.round(lastLiveData.alt || 0)} m`;
+      txt.textContent = isLive ? 'Bollerwagen LIVE' : 'Offline (Letzter Ort)';
+      document.getElementById('subInfo').textContent = `Signal ${formatAge(diffSec)} • Höhe: ${Math.round(lastLiveData.alt || 0)} m`;
 
       document.getElementById('valSpeed').textContent = isLive ? `${Number(lastLiveData.speed || 0).toFixed(1)} km/h` : '0.0 km/h';
       document.getElementById('valCruise').textContent = isLive ? (lastLiveData.cruise ? 'Tempomat' : 'Manuell') : 'Aus';
@@ -477,26 +743,25 @@
         if (!res.ok) return;
         const data = await res.json();
         if (!data || typeof data.lat !== 'number' || typeof data.lon !== 'number') {
-          document.getElementById('statusText').textContent = 'Warte auf 1. GPS-Signal...';
+          document.getElementById('statusText').textContent = 'Warte auf GPS...';
           return;
         }
 
         lastLiveData = data;
         const pos = [data.lat, data.lon];
 
+        document.getElementById('toggleFactsBtn').style.display = 'inline-block';
+
         if (!liveMarker) {
-          liveMarker = L.marker(pos, { icon: wagonIcon }).addTo(map);
+          liveMarker = L.marker(pos, { icon: wagonIcon, zIndexOffset: 1000 }).addTo(map);
           map.setView(pos, 17);
         } else {
           liveMarker.setLatLng(pos);
-          if (autoFollow) map.panTo(pos);
+          if (autoFollow && !navActive) map.panTo(pos);
         }
 
-        const navBtn = document.getElementById('navBtn');
-        navBtn.style.display = 'flex';
-        navBtn.href = `https://www.google.com/maps/dir/?api=1&destination=${data.lat},${data.lon}&travelmode=walking`;
-
         updateLiveHud();
+        if (navActive) updateDynamicRoute(false);
       } catch (e) {}
     }
 
