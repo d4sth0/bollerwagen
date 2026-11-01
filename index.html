@@ -624,18 +624,25 @@
 
     function toggleSeries(idx) {
       if (!telemetryChart) return;
-      const meta = telemetryChart.getDatasetMeta(idx);
-      meta.hidden = meta.hidden === null ? !telemetryChart.data.datasets[idx].hidden : null;
+
+      const isVisible = !telemetryChart.isDatasetVisible(idx);
+      telemetryChart.setDatasetVisibility(idx, isVisible);
 
       const btnIds = ['btnSeriesDac', 'btnSeriesTilt', 'btnSeriesSpd', 'btnSeriesAlt'];
       const clsNames = ['on-dac', 'on-tilt', 'on-spd', 'on-alt'];
-      const isVisible = !telemetryChart.isDatasetVisible(idx);
-      telemetryChart.setDatasetVisibility(idx, isVisible);
       document.getElementById(btnIds[idx]).classList.toggle(clsNames[idx], isVisible);
 
-      if (idx === 3) {
-        telemetryChart.options.scales.yAlt.display = isVisible;
-      }
+      const showDac = telemetryChart.isDatasetVisible(0);
+      const showTilt = telemetryChart.isDatasetVisible(1);
+      const showSpd = telemetryChart.isDatasetVisible(2);
+      const showAlt = telemetryChart.isDatasetVisible(3);
+
+      telemetryChart.options.scales.yDac.display = showDac;
+      telemetryChart.options.scales.yTilt.display = (showTilt || showSpd);
+      telemetryChart.options.scales.yTilt.title.text =
+        (showTilt && showSpd) ? 'Steigung (°) / Speed' : (showTilt ? 'Steigung (°)' : 'Speed (km/h)');
+      telemetryChart.options.scales.yAlt.display = showAlt;
+
       telemetryChart.update();
     }
 
@@ -792,6 +799,49 @@
     // =====================================================
     // EIGENER STANDORT & DYNAMISCHE FUSSGÄNGER-NAVIGATION
     // =====================================================
+    function startUserLocationTracking() {
+      if (!navigator.geolocation || geoWatchId !== null) return;
+
+      geoWatchId = navigator.geolocation.watchPosition(
+        onUserPosition,
+        () => {
+          if (navActive) {
+            document.getElementById('navText').textContent = '⚠️ Handy-Standort bitte erlauben';
+            document.getElementById('gmapsLink').style.display = 'none';
+          }
+        },
+        { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+      );
+    }
+
+    function onUserPosition(pos) {
+      const isFirstFix = (userPos === null);
+      userPos = {
+        lat: pos.coords.latitude,
+        lon: pos.coords.longitude,
+        acc: pos.coords.accuracy || 15
+      };
+
+      const latlng = [userPos.lat, userPos.lon];
+      if (!userMarker) {
+        userAccCircle = L.circle(latlng, { radius: userPos.acc, color: '#2979ff', weight: 1, fillOpacity: 0.12 }).addTo(map);
+        userMarker = L.marker(latlng, { icon: userIcon, zIndexOffset: 900 }).bindPopup('<b>Dein Standort</b>').addTo(map);
+      } else {
+        userMarker.setLatLng(latlng);
+        userAccCircle.setLatLng(latlng);
+        userAccCircle.setRadius(userPos.acc);
+      }
+
+      // Kamera nur beim ersten GPS-Fix schwenken, falls Navi aktiv ist oder der Bollerwagen noch nie gesendet hat
+      if (isFirstFix && (navActive || !lastLiveData)) {
+        centerMap();
+      }
+
+      if (navActive) {
+        updateDynamicRoute(false);
+      }
+    }
+
     function toggleLiveNav() {
       const btn = document.getElementById('locateBtn');
       const banner = document.getElementById('navBanner');
@@ -808,20 +858,16 @@
         banner.style.display = 'flex';
         gmaps.style.display = 'none';
 
-        if (!lastLiveData || typeof lastLiveData.lat !== 'number') {
-          document.getElementById('navText').textContent = '⏳ Warte auf Bollerwagen-Standort...';
-        } else {
-          document.getElementById('navText').textContent = '📡 Ermittle eigenen Standort...';
-        }
+        startUserLocationTracking();
 
-        geoWatchId = navigator.geolocation.watchPosition(
-          onUserPosition,
-          () => {
-            document.getElementById('navText').textContent = '⚠️ Handy-Standort bitte erlauben';
-            gmaps.style.display = 'none';
-          },
-          { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
-        );
+        if (!userPos) {
+          document.getElementById('navText').textContent = '📡 Ermittle eigenen Standort...';
+        } else if (!lastLiveData || typeof lastLiveData.lat !== 'number') {
+          document.getElementById('navText').textContent = '⏳ Bollerwagen ist aus / noch kein GPS';
+        } else {
+          centerMap();
+          updateDynamicRoute(true);
+        }
       } else {
         navActive = false;
         btn.classList.remove('nav-active');
@@ -830,14 +876,8 @@
         gmaps.style.display = 'none';
         gmaps.href = '#';
 
-        if (geoWatchId !== null) {
-          navigator.geolocation.clearWatch(geoWatchId);
-          geoWatchId = null;
-        }
-        if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
-        if (userAccCircle) { map.removeLayer(userAccCircle); userAccCircle = null; }
+        // Nur die Routenlinie entfernen – der eigene Standort (userMarker) bleibt dauerhaft sichtbar!
         navLayerGroup.clearLayers();
-        userPos = null;
         lastRoutedUser = null;
         lastRoutedWagon = null;
       }
@@ -1217,12 +1257,14 @@
         if (navActive) updateDynamicRoute(false);
       } catch (e) {}
     }
-
+    
+    startUserLocationTracking();
     loadAvailableDays();
     fetchLiveStatus();
     setInterval(fetchLiveStatus, 5000);
     setInterval(updateLiveHud, 1000);
     setInterval(loadAvailableDays, 60000);
+  </script>
   </script>
 </body>
 </html>
