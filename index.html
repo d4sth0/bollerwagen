@@ -451,6 +451,7 @@
     let devDrawerOpen = false;
     let telemetryChart = null;
     let chartPoints = [];
+    let liveHistoryLoaded = false;
 
     // Eigener Standort & Live-Navigation
     let navActive = false;
@@ -664,7 +665,7 @@
 
       if (devDrawerOpen) {
         if (!telemetryChart) initTelemetryChart();
-        if (currentMode === 'live' && chartPoints.length === 0) {
+        if (currentMode === 'live' && !liveHistoryLoaded) {
           await loadTodayTrackForLiveChart();
         } else {
           updateChartUI();
@@ -695,6 +696,7 @@
             cr: Number(raw[ts].cr || 0) === 1
           })).filter(p => !isNaN(p.lat) && !isNaN(p.lon));
         }
+        liveHistoryLoaded = true;
       } catch (e) {}
       updateChartUI();
     }
@@ -883,27 +885,6 @@
       }
     }
 
-    function onUserPosition(pos) {
-      userPos = {
-        lat: pos.coords.latitude,
-        lon: pos.coords.longitude,
-        acc: pos.coords.accuracy || 15
-      };
-
-      const latlng = [userPos.lat, userPos.lon];
-      if (!userMarker) {
-        userAccCircle = L.circle(latlng, { radius: userPos.acc, color: '#2979ff', weight: 1, fillOpacity: 0.12 }).addTo(map);
-        userMarker = L.marker(latlng, { icon: userIcon, zIndexOffset: 900 }).bindPopup('<b>Dein Standort</b>').addTo(map);
-        centerMap();
-      } else {
-        userMarker.setLatLng(latlng);
-        userAccCircle.setLatLng(latlng);
-        userAccCircle.setRadius(userPos.acc);
-      }
-
-      updateDynamicRoute(false);
-    }
-
     async function updateDynamicRoute(force) {
       const gmaps = document.getElementById('gmapsLink');
 
@@ -1040,6 +1021,7 @@
         autoFollow = true;
         document.getElementById('followBtn').classList.add('active');
         chartPoints = [];
+        liveHistoryLoaded = false;
         if (devDrawerOpen) loadTodayTrackForLiveChart();
         fetchLiveStatus();
       } else {
@@ -1093,6 +1075,7 @@
         if (devDrawerOpen) updateChartUI();
 
         let gpsDistKm = 0;
+        let odoDelta = 0;
         let cruiseDistKm = 0;
         let driveSec = 0;
         let pauseSec = 0;
@@ -1117,6 +1100,12 @@
           if (segKm < 0.5) {
             gpsDistKm += segKm;
             if (p2.cr) cruiseDistKm += segKm;
+          }
+
+          // Rad-Strecke inkrementell aufaddieren (fest gegen 2h-Trip-Reset)
+          const dKm = (p2.km >= p1.km) ? (p2.km - p1.km) : p2.km;
+          if (dKm > 0 && dKm < 5.0) {
+            odoDelta += dKm;
           }
 
           if (dt <= 60) {
@@ -1172,7 +1161,6 @@
         currentTrackBounds = L.latLngBounds(allLatLngs);
         map.fitBounds(currentTrackBounds, getFitPadding());
 
-        const odoDelta = (last.km >= first.km) ? (last.km - first.km) : 0;
         const bestDistKm = Math.max(gpsDistKm, odoDelta);
         const totalDurSec = Math.max(0, last.ts - first.ts);
         const avgMovingKmh = driveSec > 60 ? (bestDistKm / (driveSec / 3600)) : 0;
@@ -1236,9 +1224,10 @@
           if (autoFollow && !navActive) map.panTo(pos);
         }
 
-        // Live-Punkt in das Entwickler-Diagramm einfügen (falls neuer Zeitstempel)
+        // Live-Punkt nur ins Diagramm einfügen, wenn das Signal aktuell ist (max. 60s alt)
+        const diffSec = Math.max(0, Math.floor((Date.now() - (data.ts || 0)) / 1000));
         const ptTs = Math.floor((data.ts || Date.now()) / 1000);
-        if (chartPoints.length === 0 || chartPoints[chartPoints.length - 1].ts < ptTs) {
+        if (diffSec <= 60 && (chartPoints.length === 0 || chartPoints[chartPoints.length - 1].ts < ptTs)) {
           chartPoints.push({
             ts: ptTs,
             lat: data.lat,
@@ -1257,14 +1246,13 @@
         if (navActive) updateDynamicRoute(false);
       } catch (e) {}
     }
-    
+
     startUserLocationTracking();
     loadAvailableDays();
     fetchLiveStatus();
     setInterval(fetchLiveStatus, 5000);
     setInterval(updateLiveHud, 1000);
     setInterval(loadAvailableDays, 60000);
-  </script>
   </script>
 </body>
 </html>
