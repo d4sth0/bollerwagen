@@ -517,7 +517,7 @@
       const isHist = (currentMode !== 'live');
       const targetGrid = document.getElementById(isHist ? 'historyStats' : 'liveStats');
       const legend = document.getElementById('routeLegend');
-      const btn = document.getId ? document.getId('toggleFactsBtn') : document.getElementById('toggleFactsBtn');
+      const btn = document.getElementById('toggleFactsBtn');
 
       targetGrid.style.display = statsCollapsed ? 'none' : 'grid';
       if (isHist) legend.style.display = statsCollapsed ? 'none' : 'flex';
@@ -1395,7 +1395,7 @@
         currentTrackBounds = L.latLngBounds(allLatLngs);
         map.fitBounds(currentTrackBounds, getFitPadding());
 
-        const useOdo = odoDelta > gpsDistKm;
+        const useOdo = odoDelta > 0 && odoDelta >= gpsDistKm * 0.7;
         const bestDistKm = useOdo ? odoDelta : gpsDistKm;
         const bestCruiseKm = Math.min(bestDistKm, useOdo ? odoCruiseKm : gpsCruiseKm);
         const cruisePct = bestDistKm > 0.005 ? Math.round((bestCruiseKm / bestDistKm) * 100) : 0;
@@ -1474,7 +1474,7 @@
         const ptTs = Math.floor((data.ts || Date.now()) / 1000);
         const lastPt = chartPoints.length > 0 ? chartPoints[chartPoints.length - 1] : null;
         const isMovingOrActive = Number(data.speed || 0) >= 0.3 ||
-                                 Boolean(data.cruise) ||
+                                 Number(data.dac || 0) > 0.1 ||
                                  !lastPt ||
                                  (haversineKm(lastPt.lat, lastPt.lon, data.lat, data.lon) * 1000 >= 10);
 
