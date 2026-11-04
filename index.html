@@ -436,8 +436,9 @@
       });
     }
 
-    let liveMarker = null;
+  let liveMarker = null;
     let chartHoverMarker = null;
+    let pinnedChartIndex = null;
     let historyLayerGroup = L.layerGroup().addTo(map);
     let navLayerGroup = L.layerGroup().addTo(map);
 
@@ -461,6 +462,8 @@
     let userAccCircle = null;
     let lastRoutedUser = null;
     let lastRoutedWagon = null;
+    let lastOsrmFactor = 1.25;
+    let HasValidOsrmRoute = false;
     let isRoutingBusy = false;
 
     map.on('dragstart', () => {
@@ -469,6 +472,21 @@
         document.getElementById('followBtn').classList.remove('active');
       }
     });
+
+    map.on('click', () => {
+      if (pinnedChartIndex !== null) {
+        pinnedChartIndex = null;
+        clearChartHighlight();
+      }
+    });
+
+    window.addEventListener('resize', updateFloatingBarsPosition);
+
+    function updateFloatingBarsPosition() {
+      const offset = (devDrawerOpen && window.innerWidth < 768) ? 'calc(46dvh + 10px)' : '';
+      document.getElementById('fabBar').style.bottom = offset;
+      document.getElementById('layerBar').style.bottom = offset;
+    }
 
     function getFitPadding() {
       const bottomPad = devDrawerOpen && window.innerWidth < 768 ? 310 : 70;
@@ -499,7 +517,7 @@
       const isHist = (currentMode !== 'live');
       const targetGrid = document.getElementById(isHist ? 'historyStats' : 'liveStats');
       const legend = document.getElementById('routeLegend');
-      const btn = document.getElementById('toggleFactsBtn');
+      const btn = document.getId ? document.getId('toggleFactsBtn') : document.getElementById('toggleFactsBtn');
 
       targetGrid.style.display = statsCollapsed ? 'none' : 'grid';
       if (isHist) legend.style.display = statsCollapsed ? 'none' : 'flex';
@@ -507,12 +525,91 @@
     }
 
     // =====================================================
-    // ENTWICKLER-TELEMETRIE DIAGRAMM (CHART.JS)
+    // ENTWICKLER-TELEMETRIE DIAGRAMM & BIDIREKTIONALES LINKING
     // =====================================================
+    function showHoverMarkerAtPoint(pt) {
+      if (!pt) return;
+      if (!chartHoverMarker) {
+        chartHoverMarker = L.marker([pt.lat, pt.lon], { icon: hoverIcon, zIndexOffset: 2000 }).addTo(map);
+      } else {
+        chartHoverMarker.setLatLng([pt.lat, pt.lon]);
+      }
+      document.getElementById('kpiCursor').textContent = `${pt.dac.toFixed(2)}V | ${pt.tlt.toFixed(1)}°`;
+    }
+
+    function clearChartHighlight() {
+      if (chartHoverMarker) {
+        map.removeLayer(chartHoverMarker);
+        chartHoverMarker = null;
+      }
+      if (telemetryChart) {
+        telemetryChart.setActiveElements([]);
+        if (telemetryChart.tooltip) {
+          telemetryChart.tooltip.setActiveElements([], { x: 0, y: 0 });
+        }
+        telemetryChart.update('none');
+      }
+      document.getElementById('kpiCursor').textContent = chartPoints.length > 0 ? 'Tippen/Hover' : 'Keine Daten';
+    }
+
+    async function focusChartPointFromMap(idx) {
+      if (idx < 0 || idx >= chartPoints.length) return;
+      pinnedChartIndex = idx;
+
+      if (!devDrawerOpen) {
+        await toggleDevDrawer();
+      }
+      if (!telemetryChart) return;
+
+      const pt = chartPoints[idx];
+      showHoverMarkerAtPoint(pt);
+
+      const activeEls = [];
+      telemetryChart.data.datasets.forEach((_, dsIdx) => {
+        if (telemetryChart.isDatasetVisible(dsIdx)) {
+          activeEls.push({ datasetIndex: dsIdx, index: idx });
+        }
+      });
+
+      const meta = telemetryChart.getDatasetMeta(0);
+      const el = meta && meta.data ? meta.data[idx] : null;
+      const ptPos = el ? { x: el.x, y: el.y } : { x: 0, y: 0 };
+
+      telemetryChart.setActiveElements(activeEls);
+      if (telemetryChart.tooltip) {
+        telemetryChart.tooltip.setActiveElements(activeEls, ptPos);
+      }
+      telemetryChart.update('none');
+    }
+
     function initTelemetryChart() {
-      const ctx = document.getElementById('telemetryChart').getContext('2d');
+      const canvas = document.getElementById('telemetryChart');
+      const ctx = canvas.getContext('2d');
+
+      const cursorLinePlugin = {
+        id: 'cursorLine',
+        afterDraw: (chart) => {
+          const active = chart.tooltip && chart.tooltip.getActiveElements ? chart.tooltip.getActiveElements() : [];
+          if (!active || active.length === 0) return;
+          const x = active[0].element.x;
+          const yAxis = chart.scales.yDac || chart.scales.yTilt || chart.scales.yAlt;
+          if (!yAxis) return;
+          const c = chart.ctx;
+          c.save();
+          c.beginPath();
+          c.moveTo(x, yAxis.top);
+          c.lineTo(x, yAxis.bottom);
+          c.lineWidth = 1.5;
+          c.strokeStyle = 'rgba(255, 214, 0, 0.8)';
+          c.setLineDash([4, 4]);
+          c.stroke();
+          c.restore();
+        }
+      };
+
       telemetryChart = new Chart(ctx, {
         type: 'line',
+        plugins: [cursorLinePlugin],
         data: {
           labels: [],
           datasets: [
@@ -523,6 +620,7 @@
               backgroundColor: 'rgba(0, 230, 118, 0.12)',
               borderWidth: 2,
               pointRadius: 0,
+              pointHoverRadius: 5,
               pointHitRadius: 12,
               tension: 0.25,
               fill: true,
@@ -535,6 +633,7 @@
               backgroundColor: 'rgba(255, 82, 82, 0.08)',
               borderWidth: 2,
               pointRadius: 0,
+              pointHoverRadius: 5,
               pointHitRadius: 12,
               tension: 0.25,
               fill: false,
@@ -547,6 +646,7 @@
               borderWidth: 1.5,
               borderDash: [4, 4],
               pointRadius: 0,
+              pointHoverRadius: 4,
               pointHitRadius: 12,
               tension: 0.25,
               hidden: true,
@@ -558,6 +658,7 @@
               borderColor: '#ab47bc',
               borderWidth: 1.5,
               pointRadius: 0,
+              pointHoverRadius: 4,
               pointHitRadius: 12,
               tension: 0.25,
               hidden: true,
@@ -569,6 +670,19 @@
           responsive: true,
           maintainAspectRatio: false,
           interaction: { mode: 'index', intersect: false },
+          onClick: (event, elements) => {
+            if (elements && elements.length > 0) {
+              const idx = elements[0].index;
+              const pt = chartPoints[idx];
+              if (pt) {
+                pinnedChartIndex = idx;
+                showHoverMarkerAtPoint(pt);
+                if (!map.getBounds().pad(-0.15).contains([pt.lat, pt.lon])) {
+                  map.panTo([pt.lat, pt.lon]);
+                }
+              }
+            }
+          },
           plugins: {
             legend: { display: false },
             tooltip: {
@@ -580,12 +694,7 @@
                   const idx = items[0].dataIndex;
                   const pt = chartPoints[idx];
                   if (!pt) return '';
-                  if (!chartHoverMarker) {
-                    chartHoverMarker = L.marker([pt.lat, pt.lon], { icon: hoverIcon, zIndexOffset: 2000 }).addTo(map);
-                  } else {
-                    chartHoverMarker.setLatLng([pt.lat, pt.lon]);
-                  }
-                  document.getElementById('kpiCursor').textContent = `${pt.dac.toFixed(2)}V | ${pt.tlt.toFixed(1)}°`;
+                  showHoverMarkerAtPoint(pt);
                   return `Modus: ${pt.cr ? 'Tempomat' : 'Manuell'}`;
                 }
               }
@@ -625,6 +734,14 @@
           }
         }
       });
+
+      canvas.addEventListener('mouseleave', () => {
+        if (pinnedChartIndex === null) {
+          clearChartHighlight();
+        } else if (chartPoints[pinnedChartIndex]) {
+          focusChartPointFromMap(pinnedChartIndex);
+        }
+      });
     }
 
     function toggleSeries(idx) {
@@ -661,18 +778,12 @@
       document.getElementById('devDrawer').classList.toggle('open', devDrawerOpen);
       document.getElementById('devMenuBtn').classList.toggle('active', devDrawerOpen);
 
-      if (window.innerWidth < 768) {
-        const bottomOffset = devDrawerOpen ? 'calc(46dvh + 10px)' : '18px';
-        document.getElementById('fabBar').style.bottom = bottomOffset;
-        document.getElementById('layerBar').style.bottom = bottomOffset;
-      }
+      updateFloatingBarsPosition();
 
-      if (!devDrawerOpen && chartHoverMarker) {
-        map.removeLayer(chartHoverMarker);
-        chartHoverMarker = null;
-      }
-
-      if (devDrawerOpen) {
+      if (!devDrawerOpen) {
+        pinnedChartIndex = null;
+        clearChartHighlight();
+      } else {
         if (!telemetryChart) initTelemetryChart();
         if (currentMode === 'live' && !liveHistoryLoaded) {
           await loadTodayTrackForLiveChart();
@@ -756,7 +867,9 @@
       document.getElementById('kpiAvgDac').textContent = cruiseCnt > 0 ? `${(sumCruiseDac / cruiseCnt).toFixed(2)} V` : '-- V';
       document.getElementById('kpiMaxDac').textContent = chartPoints.length > 0 ? `${maxDac.toFixed(2)} V` : '-- V';
       document.getElementById('kpiMaxUp').textContent = chartPoints.length > 0 && maxUp > -90 ? `${maxUp.toFixed(1)} °` : '-- °';
-      document.getElementById('kpiCursor').textContent = chartPoints.length > 0 ? 'Tippen/Hover' : 'Keine Daten';
+      if (pinnedChartIndex === null) {
+        document.getElementById('kpiCursor').textContent = chartPoints.length > 0 ? 'Tippen/Hover' : 'Keine Daten';
+      }
     }
 
     // =====================================================
@@ -809,6 +922,28 @@
       const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
       const days = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
       return `📅 ${days[dateObj.getDay()]}, ${parts[2]}.${parts[1]}.${parts[0].slice(2)}`;
+    }
+
+    function resetHistoryStatsUI(subInfoMsg) {
+      if (subInfoMsg) document.getElementById('subInfo').textContent = subInfoMsg;
+      document.getElementById('fDist').textContent = '-- km';
+      document.getElementById('fPoints').textContent = '0 Punkte';
+      document.getElementById('fTimeSpan').textContent = '--:--';
+      document.getElementById('fTotalDur').textContent = '--';
+      document.getElementById('fDriveTime').textContent = '--';
+      document.getElementById('fPauseInfo').textContent = '0 Stopps';
+      document.getElementById('fAvgSpeed').textContent = 'Ø -- km/h';
+      document.getElementById('fMaxSpeed').textContent = 'Top: -- km/h';
+      document.getElementById('fCruisePct').textContent = '-- %';
+      document.getElementById('fCruiseKm').textContent = '-- km Cruise';
+      document.getElementById('fElevGain').textContent = '+-- m';
+      document.getElementById('fAltRange').textContent = '-- bis -- m';
+
+      currentTrackBounds = null;
+      pinnedChartIndex = null;
+      chartPoints = [];
+      clearChartHighlight();
+      if (devDrawerOpen) updateChartUI();
     }
 
     // =====================================================
@@ -893,6 +1028,7 @@
         navLayerGroup.clearLayers();
         lastRoutedUser = null;
         lastRoutedWagon = null;
+        HasValidOsrmRoute = false;
       }
     }
 
@@ -921,6 +1057,7 @@
 
       if (directMeters < 15) {
         navLayerGroup.clearLayers();
+        HasValidOsrmRoute = false;
         document.getElementById('navText').textContent = `🎉 Du bist beim Bollerwagen (${Math.round(directMeters)} m)`;
         return;
       }
@@ -928,7 +1065,18 @@
       const movedUser = !lastRoutedUser || (haversineKm(userPos.lat, userPos.lon, lastRoutedUser.lat, lastRoutedUser.lon) * 1000 >= 15);
       const movedWagon = !lastRoutedWagon || (haversineKm(lastLiveData.lat, lastLiveData.lon, lastRoutedWagon.lat, lastRoutedWagon.lon) * 1000 >= 15);
 
-      if (!force && !movedUser && !movedWagon) return;
+      if (!force && !movedUser && !movedWagon) {
+        if (HasValidOsrmRoute) {
+          const estRouteMeters = directMeters * lastOsrmFactor;
+          const walkMins = Math.max(1, Math.round(estRouteMeters / 78));
+          document.getElementById('navText').textContent = `🏃 Fußweg: ${formatDist(estRouteMeters)} (~${walkMins} Min. • ${compass})`;
+        } else {
+          const walkMins = Math.max(1, Math.round(directMeters / 75));
+          document.getElementById('navText').textContent = `🧭 Luftlinie: ${formatDist(directMeters)} (~${walkMins} Min. Richtung ${compass})`;
+        }
+        return;
+      }
+
       if (isRoutingBusy) return;
       isRoutingBusy = true;
 
@@ -946,6 +1094,9 @@
           const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
           const routeMeters = route.distance;
           const walkMins = Math.max(1, Math.round(routeMeters / 78));
+
+          lastOsrmFactor = directMeters > 5 ? Math.max(1.0, Math.min(3.0, routeMeters / directMeters)) : 1.0;
+          HasValidOsrmRoute = true;
 
           L.polyline([[userPos.lat, userPos.lon], [lastLiveData.lat, lastLiveData.lon]], {
             color: '#90caf9', weight: 2, opacity: 0.35, dashArray: '4, 8'
@@ -965,12 +1116,16 @@
       } catch (e) {
         if (currentMode !== 'live' || !navActive) return;
         navLayerGroup.clearLayers();
+        HasValidOsrmRoute = false;
+
         L.polyline([[userPos.lat, userPos.lon], [lastLiveData.lat, lastLiveData.lon]], {
           color: '#00e5ff', weight: 4, opacity: 0.85, dashArray: '6, 8'
         }).addTo(navLayerGroup);
 
         const walkMins = Math.max(1, Math.round(directMeters / 75));
         document.getElementById('navText').textContent = `🧭 Luftlinie: ${formatDist(directMeters)} (~${walkMins} Min. Richtung ${compass})`;
+        lastRoutedUser = { ...userPos };
+        lastRoutedWagon = { lat: lastLiveData.lat, lon: lastLiveData.lon };
       } finally {
         isRoutingBusy = false;
       }
@@ -1014,10 +1169,8 @@
       const locateBtn = document.getElementById('locateBtn');
       const navBanner = document.getElementById('navBanner');
 
-      if (chartHoverMarker) {
-        map.removeLayer(chartHoverMarker);
-        chartHoverMarker = null;
-      }
+      pinnedChartIndex = null;
+      clearChartHighlight();
 
       statsCollapsed = false;
       toggleBtn.style.display = 'inline-block';
@@ -1045,6 +1198,7 @@
         navLayerGroup.clearLayers();
         lastRoutedUser = null;
         lastRoutedWagon = null;
+        HasValidOsrmRoute = false;
         navBanner.style.display = 'none';
         locateBtn.style.display = 'none';
         liveGrid.style.display = 'none';
@@ -1067,14 +1221,15 @@
         historyLayerGroup.clearLayers();
 
         if (!raw || typeof raw !== 'object') {
-          document.getElementById('subInfo').textContent = 'Keine Routendaten an diesem Tag';
-          chartPoints = [];
-          updateChartUI();
+          resetHistoryStatsUI('Keine Routendaten an diesem Tag');
           return;
         }
 
         const timestamps = Object.keys(raw).map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
-        if (timestamps.length === 0) return;
+        if (timestamps.length === 0) {
+          resetHistoryStatsUI('Keine Routendaten an diesem Tag');
+          return;
+        }
 
         const points = timestamps.map(ts => ({
           ts,
@@ -1088,24 +1243,37 @@
           cr: Number(raw[ts].cr || 0) === 1
         })).filter(p => !isNaN(p.lat) && !isNaN(p.lon));
 
-        if (points.length === 0) return;
+        if (points.length === 0) {
+          resetHistoryStatsUI('Keine gültigen GPS-Punkte an diesem Tag');
+          return;
+        }
 
         chartPoints = points;
         if (devDrawerOpen) updateChartUI();
 
         let gpsDistKm = 0;
+        let gpsCruiseKm = 0;
         let odoDelta = 0;
-        let cruiseDistKm = 0;
+        let odoCruiseKm = 0;
         let driveSec = 0;
         let pauseSec = 0;
         let pauseCount = 0;
         let maxSpeed = 0;
         let elevGain = 0;
 
-        const validAlts = points.map(p => p.alt).filter(a => a > 0);
-        let minAlt = validAlts.length > 0 ? validAlts[0] : 0;
-        let maxAlt = validAlts.length > 0 ? validAlts[0] : 0;
-        let lastSmoothAlt = validAlts.length > 0 ? validAlts[0] : null;
+        let minAlt = Infinity;
+        let maxAlt = -Infinity;
+        let lastSmoothAlt = null;
+
+        if (points[0].alt > 0) {
+          const nextPt = points.length > 1 ? points[1] : null;
+          const isInitialGlitch = nextPt && nextPt.alt > 0 && Math.abs(nextPt.alt - points[0].alt) > 40 && (nextPt.ts - points[0].ts) <= 30;
+          if (!isInitialGlitch) {
+            minAlt = points[0].alt;
+            maxAlt = points[0].alt;
+            lastSmoothAlt = points[0].alt;
+          }
+        }
 
         const allLatLngs = [[points[0].lat, points[0].lon]];
         if (points[0].spd > maxSpeed) maxSpeed = points[0].spd;
@@ -1120,57 +1288,85 @@
 
           if (segKm < 0.5) {
             gpsDistKm += segKm;
-            if (p2.cr) cruiseDistKm += segKm;
+            if (p2.cr) gpsCruiseKm += segKm;
           }
 
-          const dKm = (p2.km >= p1.km) ? (p2.km - p1.km) : p2.km;
+          let dKm = 0;
+          if (p2.km >= p1.km) {
+            dKm = p2.km - p1.km;
+          } else {
+            const isGenuineTripReset = (p2.km < 0.25) && (dt >= 3600 || p1.km > 0.5);
+            dKm = isGenuineTripReset ? p2.km : (segKm < 0.5 ? segKm : 0);
+          }
+
           if (dKm > 0 && dKm < 5.0) {
             odoDelta += dKm;
+            if (p2.cr) odoCruiseKm += dKm;
           }
 
           if (dt <= 60) {
             driveSec += dt;
-          } else if (dt <= 120) {
+          } else if (dt < 300) {
             driveSec += 30;
             pauseSec += (dt - 30);
           } else {
             pauseSec += dt;
             pauseCount++;
-            if (dt >= 300) {
-              const tStart = new Date(p1.ts * 1000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
-              L.marker([p1.lat, p1.lon], { icon: makePin('🍺', '#fb8c00') })
-                .bindPopup(`<b>Pause (${formatDuration(dt)})</b><br>ab ${tStart} Uhr`)
-                .addTo(historyLayerGroup);
-            }
+            const tStart = new Date(p1.ts * 1000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+            L.marker([p1.lat, p1.lon], { icon: makePin('🍺', '#fb8c00') })
+              .bindPopup(`<b>Pause (${formatDuration(dt)})</b><br>ab ${tStart} Uhr`)
+              .addTo(historyLayerGroup);
           }
 
           if (p2.spd > maxSpeed) maxSpeed = p2.spd;
 
           if (p2.alt > 0) {
-            if (p2.alt < minAlt) minAlt = p2.alt;
-            if (p2.alt > maxAlt) maxAlt = p2.alt;
-
             if (lastSmoothAlt === null) {
               lastSmoothAlt = p2.alt;
+              if (p2.alt < minAlt) minAlt = p2.alt;
+              if (p2.alt > maxAlt) maxAlt = p2.alt;
             } else {
               const altDiff = p2.alt - lastSmoothAlt;
               if (Math.abs(altDiff) > 40 && dt <= 30) {
-                lastSmoothAlt = p2.alt; // GPS-2D/3D-Ausreißer ignorieren
-              } else if (altDiff >= 3.0) {
-                elevGain += altDiff;
-                lastSmoothAlt = p2.alt;
-              } else if (altDiff <= -3.0) {
-                lastSmoothAlt = p2.alt;
+                const pNext = (i + 1 < points.length) ? points[i + 1] : null;
+                const confirmedNewLevel = pNext && pNext.alt > 0 && Math.abs(pNext.alt - p2.alt) <= 15;
+                if (confirmedNewLevel) {
+                  lastSmoothAlt = p2.alt;
+                  if (p2.alt < minAlt) minAlt = p2.alt;
+                  if (p2.alt > maxAlt) maxAlt = p2.alt;
+                }
+              } else {
+                if (p2.alt < minAlt) minAlt = p2.alt;
+                if (p2.alt > maxAlt) maxAlt = p2.alt;
+                if (altDiff >= 3.0) {
+                  elevGain += altDiff;
+                  lastSmoothAlt = p2.alt;
+                } else if (altDiff <= -3.0) {
+                  lastSmoothAlt = p2.alt;
+                }
               }
             }
           }
 
-          const segColor = p2.cr ? '#29b6f6' : '#ffa726';
-          const tStr = new Date(p2.ts * 1000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-          L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {
-            color: segColor, weight: 5, opacity: 0.9
-          }).bindPopup(`<b>🕒 ${tStr} Uhr</b><br>Speed: ${p2.spd.toFixed(1)} km/h<br>DAC: ${p2.dac.toFixed(2)} V | Steigung: ${p2.tlt.toFixed(1)}°<br>Modus: ${p2.cr ? 'Tempomat' : 'Manuell'}<br>Höhe: ${Math.round(p2.alt)} m`)
-            .addTo(historyLayerGroup);
+          if (segKm < 0.5) {
+            const segColor = p2.cr ? '#29b6f6' : '#ffa726';
+            const tStr = new Date(p2.ts * 1000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+            const ptIdx = i;
+            const segLine = L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], {
+              color: segColor, weight: 5, opacity: 0.9
+            }).bindPopup(`<b>🕒 ${tStr} Uhr</b><br>Speed: ${p2.spd.toFixed(1)} km/h<br>DAC: ${p2.dac.toFixed(2)} V | Steigung: ${p2.tlt.toFixed(1)}°<br>Modus: ${p2.cr ? 'Tempomat' : 'Manuell'}<br>Höhe: ${Math.round(p2.alt)} m`);
+
+            segLine.on('click', (e) => {
+              L.DomEvent.stopPropagation(e);
+              focusChartPointFromMap(ptIdx);
+            });
+            segLine.addTo(historyLayerGroup);
+          }
+        }
+
+        if (minAlt === Infinity) {
+          minAlt = 0;
+          maxAlt = 0;
         }
 
         const first = points[0];
@@ -1178,23 +1374,34 @@
         const startStr = new Date(first.ts * 1000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
         const endStr = new Date(last.ts * 1000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
 
-        L.marker([first.lat, first.lon], { icon: makePin('🟢', '#2e7d32') })
-          .bindPopup(`<b>Tour-Start</b><br>${startStr} Uhr`)
-          .addTo(historyLayerGroup);
+        const startMarker = L.marker([first.lat, first.lon], { icon: makePin('🟢', '#2e7d32') })
+          .bindPopup(`<b>Tour-Start</b><br>${startStr} Uhr`);
+        startMarker.on('click', (e) => {
+          L.DomEvent.stopPropagation(e);
+          focusChartPointFromMap(0);
+        });
+        startMarker.addTo(historyLayerGroup);
 
         if (points.length > 1) {
-          L.marker([last.lat, last.lon], { icon: makePin('🏁', '#c62828') })
-            .bindPopup(`<b>Tour-Ende</b><br>${endStr} Uhr`)
-            .addTo(historyLayerGroup);
+          const endMarker = L.marker([last.lat, last.lon], { icon: makePin('🏁', '#c62828') })
+            .bindPopup(`<b>Tour-Ende</b><br>${endStr} Uhr`);
+          endMarker.on('click', (e) => {
+            L.DomEvent.stopPropagation(e);
+            focusChartPointFromMap(points.length - 1);
+          });
+          endMarker.addTo(historyLayerGroup);
         }
 
         currentTrackBounds = L.latLngBounds(allLatLngs);
         map.fitBounds(currentTrackBounds, getFitPadding());
 
-        const bestDistKm = Math.max(gpsDistKm, odoDelta);
+        const useOdo = odoDelta > gpsDistKm;
+        const bestDistKm = useOdo ? odoDelta : gpsDistKm;
+        const bestCruiseKm = Math.min(bestDistKm, useOdo ? odoCruiseKm : gpsCruiseKm);
+        const cruisePct = bestDistKm > 0.005 ? Math.round((bestCruiseKm / bestDistKm) * 100) : 0;
+
         const totalDurSec = Math.max(0, last.ts - first.ts);
         const avgMovingKmh = driveSec > 60 ? (bestDistKm / (driveSec / 3600)) : 0;
-        const cruisePct = gpsDistKm > 0.01 ? Math.round((cruiseDistKm / gpsDistKm) * 100) : 0;
 
         document.getElementById('subInfo').textContent = `${formatDateLabel(dateKey)} • ${points.length} Punkte`;
         document.getElementById('fDist').textContent = `${bestDistKm.toFixed(2)} km`;
@@ -1206,11 +1413,11 @@
         document.getElementById('fAvgSpeed').textContent = `Ø ${avgMovingKmh.toFixed(1)} km/h`;
         document.getElementById('fMaxSpeed').textContent = `Top: ${maxSpeed.toFixed(1)} km/h`;
         document.getElementById('fCruisePct').textContent = `${cruisePct} %`;
-        document.getElementById('fCruiseKm').textContent = `${(bestDistKm * cruisePct / 100).toFixed(2)} km Cruise`;
+        document.getElementById('fCruiseKm').textContent = `${bestCruiseKm.toFixed(2)} km Cruise`;
         document.getElementById('fElevGain').textContent = `+${Math.round(elevGain)} m`;
         document.getElementById('fAltRange').textContent = `${Math.round(minAlt)}–${Math.round(maxAlt)} m`;
       } catch (e) {
-        document.getElementById('subInfo').textContent = 'Fehler beim Laden der Tour';
+        resetHistoryStatsUI('Fehler beim Laden der Tour');
       }
     }
 
@@ -1282,7 +1489,12 @@
             dac: Number(data.dac || 0),
             cr: Boolean(data.cruise)
           });
-          if (chartPoints.length > 600) chartPoints.shift();
+          if (chartPoints.length > 600) {
+            chartPoints.shift();
+            if (pinnedChartIndex !== null) {
+              pinnedChartIndex = Math.max(0, pinnedChartIndex - 1);
+            }
+          }
           if (devDrawerOpen) updateChartUI();
         }
 
