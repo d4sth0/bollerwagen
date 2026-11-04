@@ -547,6 +547,7 @@
               borderWidth: 1.5,
               borderDash: [4, 4],
               pointRadius: 0,
+              pointHitRadius: 12,
               tension: 0.25,
               hidden: true,
               yAxisID: 'yTilt'
@@ -557,6 +558,7 @@
               borderColor: '#ab47bc',
               borderWidth: 1.5,
               pointRadius: 0,
+              pointHitRadius: 12,
               tension: 0.25,
               hidden: true,
               yAxisID: 'yAlt'
@@ -608,7 +610,7 @@
               position: 'right',
               suggestedMin: -10,
               suggestedMax: 15,
-              title: { display: true, text: 'Steigung (°) / Speed', color: '#ff5252', font: { size: 10, weight: 'bold' } },
+              title: { display: true, text: 'Steigung (°)', color: '#ff5252', font: { size: 10, weight: 'bold' } },
               ticks: { color: '#ff5252', font: { size: 10 } },
               grid: { drawOnChartArea: false }
             },
@@ -616,6 +618,8 @@
               type: 'linear',
               position: 'right',
               display: false,
+              title: { display: true, text: 'Höhe (m)', color: '#ce93d8', font: { size: 10, weight: 'bold' } },
+              ticks: { color: '#ce93d8', font: { size: 10 } },
               grid: { drawOnChartArea: false }
             }
           }
@@ -640,6 +644,11 @@
 
       telemetryChart.options.scales.yDac.display = showDac;
       telemetryChart.options.scales.yTilt.display = (showTilt || showSpd);
+      telemetryChart.options.scales.yTilt.suggestedMin = showTilt ? -10 : 0;
+
+      const tiltAxisColor = showTilt ? '#ff5252' : '#29b6f6';
+      telemetryChart.options.scales.yTilt.title.color = tiltAxisColor;
+      telemetryChart.options.scales.yTilt.ticks.color = tiltAxisColor;
       telemetryChart.options.scales.yTilt.title.text =
         (showTilt && showSpd) ? 'Steigung (°) / Speed' : (showTilt ? 'Steigung (°)' : 'Speed (km/h)');
       telemetryChart.options.scales.yAlt.display = showAlt;
@@ -683,9 +692,11 @@
       try {
         const res = await fetch(`${BASE_URL}/tracks/${todayKey}.json?t=${Date.now()}`);
         const raw = await res.json();
+        if (currentMode !== 'live') return;
+
         if (raw && typeof raw === 'object') {
           const timestamps = Object.keys(raw).map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
-          chartPoints = timestamps.map(ts => ({
+          const loaded = timestamps.map(ts => ({
             ts,
             lat: Number(raw[ts].lat),
             lon: Number(raw[ts].lon),
@@ -695,6 +706,10 @@
             dac: Number(raw[ts].dac || 0),
             cr: Number(raw[ts].cr || 0) === 1
           })).filter(p => !isNaN(p.lat) && !isNaN(p.lon));
+
+          const lastLoadedTs = loaded.length > 0 ? loaded[loaded.length - 1].ts : 0;
+          const newerLivePoints = chartPoints.filter(p => p.ts > lastLoadedTs);
+          chartPoints = loaded.concat(newerLivePoints);
         }
         liveHistoryLoaded = true;
       } catch (e) {}
@@ -741,9 +756,7 @@
       document.getElementById('kpiAvgDac').textContent = cruiseCnt > 0 ? `${(sumCruiseDac / cruiseCnt).toFixed(2)} V` : '-- V';
       document.getElementById('kpiMaxDac').textContent = chartPoints.length > 0 ? `${maxDac.toFixed(2)} V` : '-- V';
       document.getElementById('kpiMaxUp').textContent = chartPoints.length > 0 && maxUp > -90 ? `${maxUp.toFixed(1)} °` : '-- °';
-      if (chartPoints.length === 0) {
-        document.getElementById('kpiCursor').textContent = 'Keine Daten';
-      }
+      document.getElementById('kpiCursor').textContent = chartPoints.length > 0 ? 'Tippen/Hover' : 'Keine Daten';
     }
 
     // =====================================================
@@ -834,7 +847,6 @@
         userAccCircle.setRadius(userPos.acc);
       }
 
-      // Kamera nur beim ersten GPS-Fix schwenken, falls Navi aktiv ist oder der Bollerwagen noch nie gesendet hat
       if (isFirstFix && (navActive || !lastLiveData)) {
         centerMap();
       }
@@ -878,7 +890,6 @@
         gmaps.style.display = 'none';
         gmaps.href = '#';
 
-        // Nur die Routenlinie entfernen – der eigene Standort (userMarker) bleibt dauerhaft sichtbar!
         navLayerGroup.clearLayers();
         lastRoutedUser = null;
         lastRoutedWagon = null;
@@ -927,6 +938,7 @@
         if (!res.ok) throw new Error();
         const json = await res.json();
 
+        if (currentMode !== 'live' || !navActive) return;
         navLayerGroup.clearLayers();
 
         if (json.routes && json.routes.length > 0) {
@@ -951,6 +963,7 @@
         lastRoutedUser = { ...userPos };
         lastRoutedWagon = { lat: lastLiveData.lat, lon: lastLiveData.lon };
       } catch (e) {
+        if (currentMode !== 'live' || !navActive) return;
         navLayerGroup.clearLayers();
         L.polyline([[userPos.lat, userPos.lon], [lastLiveData.lat, lastLiveData.lon]], {
           color: '#00e5ff', weight: 4, opacity: 0.85, dashArray: '6, 8'
@@ -1016,7 +1029,10 @@
         histGrid.style.display = 'none';
         legend.style.display = 'none';
         locateBtn.style.display = 'flex';
-        if (navActive) navBanner.style.display = 'flex';
+        if (navActive) {
+          navBanner.style.display = 'flex';
+          updateDynamicRoute(true);
+        }
         if (liveMarker) liveMarker.setOpacity(1);
         autoFollow = true;
         document.getElementById('followBtn').classList.add('active');
@@ -1027,6 +1043,8 @@
       } else {
         if (liveMarker) liveMarker.setOpacity(0.2);
         navLayerGroup.clearLayers();
+        lastRoutedUser = null;
+        lastRoutedWagon = null;
         navBanner.style.display = 'none';
         locateBtn.style.display = 'none';
         liveGrid.style.display = 'none';
@@ -1045,6 +1063,7 @@
       try {
         const res = await fetch(`${BASE_URL}/tracks/${dateKey}.json`);
         const raw = await res.json();
+        if (currentMode !== dateKey) return;
         historyLayerGroup.clearLayers();
 
         if (!raw || typeof raw !== 'object') {
@@ -1082,9 +1101,11 @@
         let pauseCount = 0;
         let maxSpeed = 0;
         let elevGain = 0;
-        let minAlt = points[0].alt;
-        let maxAlt = points[0].alt;
-        let lastSmoothAlt = points[0].alt;
+
+        const validAlts = points.map(p => p.alt).filter(a => a > 0);
+        let minAlt = validAlts.length > 0 ? validAlts[0] : 0;
+        let maxAlt = validAlts.length > 0 ? validAlts[0] : 0;
+        let lastSmoothAlt = validAlts.length > 0 ? validAlts[0] : null;
 
         const allLatLngs = [[points[0].lat, points[0].lon]];
         if (points[0].spd > maxSpeed) maxSpeed = points[0].spd;
@@ -1102,7 +1123,6 @@
             if (p2.cr) cruiseDistKm += segKm;
           }
 
-          // Rad-Strecke inkrementell aufaddieren (fest gegen 2h-Trip-Reset)
           const dKm = (p2.km >= p1.km) ? (p2.km - p1.km) : p2.km;
           if (dKm > 0 && dKm < 5.0) {
             odoDelta += dKm;
@@ -1125,14 +1145,24 @@
           }
 
           if (p2.spd > maxSpeed) maxSpeed = p2.spd;
-          if (p2.alt < minAlt) minAlt = p2.alt;
-          if (p2.alt > maxAlt) maxAlt = p2.alt;
 
-          if (p2.alt - lastSmoothAlt >= 3.0) {
-            elevGain += (p2.alt - lastSmoothAlt);
-            lastSmoothAlt = p2.alt;
-          } else if (lastSmoothAlt - p2.alt >= 3.0) {
-            lastSmoothAlt = p2.alt;
+          if (p2.alt > 0) {
+            if (p2.alt < minAlt) minAlt = p2.alt;
+            if (p2.alt > maxAlt) maxAlt = p2.alt;
+
+            if (lastSmoothAlt === null) {
+              lastSmoothAlt = p2.alt;
+            } else {
+              const altDiff = p2.alt - lastSmoothAlt;
+              if (Math.abs(altDiff) > 40 && dt <= 30) {
+                lastSmoothAlt = p2.alt; // GPS-2D/3D-Ausreißer ignorieren
+              } else if (altDiff >= 3.0) {
+                elevGain += altDiff;
+                lastSmoothAlt = p2.alt;
+              } else if (altDiff <= -3.0) {
+                lastSmoothAlt = p2.alt;
+              }
+            }
           }
 
           const segColor = p2.cr ? '#29b6f6' : '#ffa726';
@@ -1206,28 +1236,42 @@
         const res = await fetch(`${BASE_URL}/status.json?t=${Date.now()}`);
         if (!res.ok) return;
         const data = await res.json();
+        if (currentMode !== 'live') return;
         if (!data || typeof data.lat !== 'number' || typeof data.lon !== 'number') {
           document.getElementById('statusText').textContent = 'Warte auf GPS...';
           return;
         }
+
+        const posChanged = !lastLiveData ||
+                           Math.abs(lastLiveData.lat - data.lat) > 1e-6 ||
+                           Math.abs(lastLiveData.lon - data.lon) > 1e-6;
 
         lastLiveData = data;
         const pos = [data.lat, data.lon];
 
         document.getElementById('toggleFactsBtn').style.display = 'inline-block';
 
+        const popupHtml = `<b>🛒 Bollerwagen</b><br>Speed: ${Number(data.speed || 0).toFixed(1)} km/h<br>Trip: ${Number(data.trip || 0).toFixed(2)} km<br>Steigung: ${Number(data.tilt || 0).toFixed(1)}°`;
         if (!liveMarker) {
-          liveMarker = L.marker(pos, { icon: wagonIcon, zIndexOffset: 1000 }).addTo(map);
+          liveMarker = L.marker(pos, { icon: wagonIcon, zIndexOffset: 1000 }).bindPopup(popupHtml).addTo(map);
           map.setView(pos, 17);
         } else {
           liveMarker.setLatLng(pos);
-          if (autoFollow && !navActive) map.panTo(pos);
+          liveMarker.setPopupContent(popupHtml);
+          if (autoFollow && !navActive && posChanged) {
+            map.panTo(pos);
+          }
         }
 
-        // Live-Punkt nur ins Diagramm einfügen, wenn das Signal aktuell ist (max. 60s alt)
         const diffSec = Math.max(0, Math.floor((Date.now() - (data.ts || 0)) / 1000));
         const ptTs = Math.floor((data.ts || Date.now()) / 1000);
-        if (diffSec <= 60 && (chartPoints.length === 0 || chartPoints[chartPoints.length - 1].ts < ptTs)) {
+        const lastPt = chartPoints.length > 0 ? chartPoints[chartPoints.length - 1] : null;
+        const isMovingOrActive = Number(data.speed || 0) >= 0.3 ||
+                                 Boolean(data.cruise) ||
+                                 !lastPt ||
+                                 (haversineKm(lastPt.lat, lastPt.lon, data.lat, data.lon) * 1000 >= 10);
+
+        if (diffSec <= 60 && isMovingOrActive && (!lastPt || lastPt.ts < ptTs)) {
           chartPoints.push({
             ts: ptTs,
             lat: data.lat,
